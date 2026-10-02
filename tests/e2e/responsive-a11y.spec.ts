@@ -13,7 +13,7 @@ const VIEWPORTS = [
   { name: "desktop", width: 1920, height: 1080 },
 ] as const;
 
-const PAGES = ["/", "/produk", "/produk?kategori=cakes", "/produk/contoh-brownies-cokelat", "/produk/contoh-pudding-karamel", "/keranjang", "/checkout", "/lacak", "/admin/login"];
+const PAGES = ["/", "/produk", "/produk?kategori=cakes", "/produk/contoh-brownies-cokelat", "/produk/contoh-pudding-karamel", "/keranjang", "/checkout", "/lacak", "/pesanan/sukses", "/admin/login"];
 
 for (const viewport of VIEWPORTS) {
   test(`no horizontal overflow or clipped header @ ${viewport.name} (${viewport.width}x${viewport.height})`, async ({ page }) => {

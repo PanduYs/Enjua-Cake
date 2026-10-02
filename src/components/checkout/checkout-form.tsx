@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 
-import type { pickupAvailabilityAction, previewCheckoutAction } from "@/app/(public)/_actions/checkout";
+import type { pickupAvailabilityAction, placeOrderAction, previewCheckoutAction } from "@/app/(public)/_actions/checkout";
+import { saveLastOrder, type LastOrder } from "@/lib/orders/last-order";
 import {
   CASH_UNAVAILABLE_REASON,
   PAYMENT_METHOD_LABEL,
@@ -26,14 +28,22 @@ type Option = keyof typeof PAYMENT_OPTION_LABEL;
 export function CheckoutForm({
   loadAvailability,
   preview,
+  placeOrder,
   pickupInfo,
 }: {
   loadAvailability: typeof pickupAvailabilityAction;
   preview: typeof previewCheckoutAction;
+  placeOrder: typeof placeOrderAction;
   pickupInfo: { address: string | null; pickupHours: string | null; pickupInstructions: string | null };
 }) {
-  const { items, hydrated } = useCartStore();
+  const { items, hydrated, clear } = useCartStore();
+  const router = useRouter();
   const formId = useId();
+  // One key per checkout attempt: a double click or retry can never create two orders (TD-15).
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const placedRef = useRef<LastOrder | null>(null);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const [placing, startPlacing] = useTransition();
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -81,17 +91,61 @@ export function CheckoutForm({
   const fieldErrors = result && !result.ok ? result.fieldErrors : {};
   const summary = result && result.ok ? result.summary : null;
 
+  const currentInput = () => ({
+    items: JSON.parse(linesKey),
+    customerName,
+    whatsapp,
+    notes,
+    pickupDate: pickupDate ?? "",
+    paymentMethod: effectiveMethod ?? "",
+    paymentOption: effectiveOption,
+  });
+
+  const createOrder = () => {
+    setPlaceError(null);
+    startPlacing(async () => {
+      const outcome = await placeOrder(currentInput(), idempotencyKey);
+      if (outcome.ok) {
+        const order = outcome.order;
+        // A replay carries no token; reuse the first response kept in memory.
+        const placed: LastOrder | null = order.trackingToken
+          ? {
+              orderNumber: order.orderNumber,
+              trackingToken: order.trackingToken,
+              pickupDate: order.pickupDate,
+              paymentMethod: order.paymentMethod,
+              paymentOption: order.paymentOption,
+              payment: order.payment,
+              reservationExpiresAt: order.reservationExpiresAt,
+            }
+          : placedRef.current;
+        if (!placed) {
+          setPlaceError(`Pesanan ${order.orderNumber} sudah dibuat. Hubungi kami via WhatsApp untuk mendapatkan kode akses.`);
+          return;
+        }
+        placedRef.current = placed;
+        saveLastOrder(placed);
+        clear();
+        router.push("/pesanan/sukses");
+        return;
+      }
+      if (outcome.code === "RATE_LIMITED") {
+        setPlaceError("Terlalu banyak percobaan. Silakan coba lagi dalam beberapa menit.");
+        return;
+      }
+      if (outcome.code === "INVALID_INPUT") {
+        setPlaceError(outcome.fieldErrors.form ?? "Terjadi masalah. Silakan coba lagi.");
+        return;
+      }
+      // Something changed since the preview (e.g. the date filled up): back to the form.
+      setResult({ ok: false, fieldErrors: outcome.fieldErrors, cartIssues: outcome.cartIssues as never, pickupReason: outcome.pickupReason });
+      if (outcome.pickupReason) setDateMessage(`${formatIsoDateLong(pickupDate ?? "")}: ${PICKUP_REASON_LABEL[outcome.pickupReason]}.`);
+    });
+  };
+
   const submit = () => {
     startTransition(async () => {
-      const outcome = await preview({
-        items: JSON.parse(linesKey),
-        customerName,
-        whatsapp,
-        notes,
-        pickupDate: pickupDate ?? "",
-        paymentMethod: effectiveMethod ?? "",
-        paymentOption: effectiveOption,
-      });
+      const outcome = await preview(currentInput());
       setResult(outcome);
       if (!outcome.ok) {
         const firstField = Object.keys(outcome.fieldErrors)[0];
@@ -126,15 +180,31 @@ export function CheckoutForm({
           ) : null}
         </dl>
         <OrderLines summary={summary} />
-        <p className="rounded-control border border-border bg-surface-muted p-3 text-sm">
-          Pembuatan pesanan online akan segera tersedia. Ringkasan ini sudah dihitung ulang oleh sistem dari harga terbaru.
+        <p className="text-sm text-muted-foreground">
+          Ringkasan ini dihitung ulang oleh sistem dari harga terbaru. Dengan menekan &ldquo;Buat Pesanan&rdquo;, slot tanggal pickup akan dipesan untukmu.
         </p>
+        {placeError ? (
+          <p role="alert" className="rounded-control border border-danger bg-surface p-3 text-sm font-medium text-danger">
+            {placeError}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-3">
-          <button type="button" onClick={() => setResult(null)} className="min-h-12 rounded-full border-2 border-primary px-6 font-semibold text-primary">
+          <button
+            type="button"
+            onClick={() => setResult(null)}
+            disabled={placing}
+            className="min-h-12 rounded-full border-2 border-primary px-6 font-semibold text-primary disabled:opacity-60"
+          >
             Ubah Data
           </button>
-          <button type="button" disabled className="min-h-12 rounded-full bg-primary px-6 font-semibold text-primary-foreground opacity-60">
-            Buat Pesanan
+          <button
+            type="button"
+            onClick={createOrder}
+            disabled={placing}
+            aria-busy={placing}
+            className="min-h-12 rounded-full bg-primary px-6 font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
+          >
+            {placing ? "Membuat pesanan…" : "Buat Pesanan"}
           </button>
         </div>
       </section>

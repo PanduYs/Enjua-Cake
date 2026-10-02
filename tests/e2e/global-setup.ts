@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 
 import postgres from "postgres";
 
-import { E2E_ADMIN } from "./fixtures";
+import { E2E_ADMIN, E2E_ORDERS_ADMIN } from "./fixtures";
 
 /** Fresh schema + migrations + sample catalog with E2E fixtures. */
 export default async function globalSetup() {
@@ -21,6 +21,10 @@ export default async function globalSetup() {
   execFileSync("npm", ["run", "--silent", "db:seed-sample", "--", "--reset", "--e2e"], { env, stdio: "inherit" });
   execFileSync("npm", ["run", "--silent", "db:seed-admin"], {
     env: { ...env, SEED_ADMIN_NAME: "Admin E2E", SEED_ADMIN_EMAIL: E2E_ADMIN.email, SEED_ADMIN_PASSWORD: E2E_ADMIN.password },
+    stdio: "inherit",
+  });
+  execFileSync("npm", ["run", "--silent", "db:seed-admin"], {
+    env: { ...env, SEED_ADMIN_NAME: "Admin Pesanan", SEED_ADMIN_EMAIL: E2E_ORDERS_ADMIN.email, SEED_ADMIN_PASSWORD: E2E_ORDERS_ADMIN.password },
     stdio: "inherit",
   });
 }

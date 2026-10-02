@@ -90,8 +90,7 @@ test.describe("Checkout", () => {
     for (const [label, amount] of expected) {
       await expect(confirm.locator(`dl > div:has(> dt:text-is("${label}")) > dd`)).toHaveText(amount);
     }
-    // Order creation ships in Phase 4.
-    await expect(confirm.getByRole("button", { name: "Buat Pesanan" })).toBeDisabled();
+    await expect(confirm.getByRole("button", { name: "Buat Pesanan" })).toBeEnabled();
     await confirm.getByRole("button", { name: "Ubah Data" }).click();
     await expect(page.getByLabel("Nama")).toHaveValue("Pelanggan E2E");
   });

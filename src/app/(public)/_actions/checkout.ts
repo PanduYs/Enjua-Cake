@@ -1,8 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
+
 import { systemClock } from "@/server/clock";
 import { getDb } from "@/server/db/client";
 import { getPickupAvailability, previewCheckout, validateCart, type CheckoutDeps } from "@/server/services/checkout";
+import { getClientIp } from "@/server/security/request";
+import { placeOrder } from "@/server/services/place-order";
 import { getStorage } from "@/server/storage";
 
 /** Thin wrappers: all validation and pricing happen in the checkout service. */
@@ -21,4 +25,9 @@ export async function pickupAvailabilityAction(lines: unknown) {
 
 export async function previewCheckoutAction(input: unknown) {
   return previewCheckout(deps(), input);
+}
+
+export async function placeOrderAction(input: unknown, idempotencyKey: unknown) {
+  const clientIp = getClientIp(await headers());
+  return placeOrder(deps(), input, { idempotencyKey, clientIp });
 }

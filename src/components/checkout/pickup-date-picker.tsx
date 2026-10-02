@@ -4,6 +4,7 @@ import { createContext, useContext, useMemo } from "react";
 import { DayPicker, type DayButtonProps } from "react-day-picker";
 import { id as idLocale } from "react-day-picker/locale";
 
+import { formatIsoDateLong } from "@/lib/format/date";
 import { PICKUP_REASON_LABEL, type PickupReasonCode } from "@/lib/copy/checkout";
 
 export type DateStatus = { date: string; available: true; remaining: number } | { date: string; available: false; reason: PickupReasonCode };
@@ -15,8 +16,7 @@ const toLocalDate = (iso: string) => {
 const toIso = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
-export const formatIsoDateLong = (iso: string) =>
-  new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(toLocalDate(iso));
+export { formatIsoDateLong };
 
 const StatusContext = createContext<ReadonlyMap<string, DateStatus>>(new Map());
 

@@ -1,17 +1,55 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
-export const metadata: Metadata = { title: "Lacak Pesanan", robots: { index: false } };
+import { TrackingLinkHandler, TrackingLookupForm } from "@/components/orders/tracking-lookup-form";
+import { TrackingView } from "@/components/orders/tracking-view";
+import { Button } from "@/components/ui/button";
+import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { systemClock } from "@/server/clock";
+import { readTrackingCookie } from "@/server/security/tracking-cookie";
+import { getTrackingView } from "@/server/services/tracking";
 
-/** Temporary page until order tracking ships in Phase 4. */
-export default function TrackingPlaceholderPage() {
+import { loadSite } from "../_lib/site";
+import { clearTrackingAction } from "./actions";
+
+export const metadata: Metadata = {
+  title: "Lacak Pesanan",
+  robots: { index: false },
+};
+
+export default async function TrackingPage() {
+  const { settings, catalog } = await loadSite();
+  const session = await readTrackingCookie();
+  const view = session ? await getTrackingView(catalog.db, session, systemClock) : null;
+
+  const wa = (kind: "order" | "cancellation") =>
+    view && settings.whatsapp_number ? buildWhatsAppLink(settings.whatsapp_number, { kind, orderNumber: view.orderNumber }, settings.business_name) : null;
+  const terminal = view?.orderStatus === "COMPLETED" || view?.orderStatus === "CANCELLED";
+
   return (
-    <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 px-4 py-20 text-center">
-      <h1 className="text-4xl">Lacak Pesanan</h1>
-      <p className="text-muted-foreground">Fitur lacak pesanan segera tersedia.</p>
-      <Link href="/" className="inline-flex min-h-11 items-center rounded-full bg-primary px-6 font-semibold text-primary-foreground">
-        Kembali ke Beranda
-      </Link>
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10 sm:py-14">
+      <h1 className="text-4xl sm:text-5xl">Lacak Pesanan</h1>
+      {view ? (
+        <>
+          <TrackingLinkHandler />
+          <TrackingView
+            view={view}
+            whatsapp={{
+              question: wa("order"),
+              cancellation: terminal ? null : wa("cancellation"),
+            }}
+          />
+          <form action={clearTrackingAction}>
+            <Button type="submit" variant="secondary">
+              Lacak pesanan lain
+            </Button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p className="text-muted-foreground">Masukkan nomor pesanan dan kode akses yang Anda terima saat membuat pesanan.</p>
+          <TrackingLookupForm />
+        </>
+      )}
     </div>
   );
 }

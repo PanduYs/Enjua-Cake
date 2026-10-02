@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { CheckoutForm } from "@/components/checkout/checkout-form";
 
-import { pickupAvailabilityAction, previewCheckoutAction } from "../_actions/checkout";
+import { pickupAvailabilityAction, placeOrderAction, previewCheckoutAction } from "../_actions/checkout";
 import { loadSite } from "../_lib/site";
 
 export const metadata: Metadata = { title: "Checkout", robots: { index: false } };
@@ -15,6 +15,7 @@ export default async function CheckoutPage() {
       <CheckoutForm
         loadAvailability={pickupAvailabilityAction}
         preview={previewCheckoutAction}
+        placeOrder={placeOrderAction}
         pickupInfo={{ address: settings.address, pickupHours: settings.pickup_hours, pickupInstructions: settings.pickup_instructions }}
       />
     </div>

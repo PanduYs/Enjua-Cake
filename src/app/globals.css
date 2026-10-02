@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-day-picker/style.css";
 
 /*
  * Design tokens — generated from src/styles/tokens.ts (keep in sync; enforced by
@@ -71,4 +72,30 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+/* Pickup calendar (react-day-picker) themed with design tokens. */
+.enjua-calendar {
+  --rdp-accent-color: var(--color-primary);
+  --rdp-accent-background-color: var(--color-surface-muted);
+  /* Shrinks on very small phones so 7 columns fit without horizontal scrolling. */
+  --rdp-day-width: min(2.75rem, calc((100vw - 5.5rem) / 7));
+  --rdp-day-height: 2.75rem;
+  --rdp-day_button-width: min(2.625rem, calc((100vw - 6rem) / 7));
+  --rdp-day_button-height: 2.625rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.enjua-calendar .rdp-selected .rdp-day_button {
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-weight: 600;
+}
+
+/* Unavailable: pattern + strike-through, not color alone (Design §19). */
+.enjua-calendar .enjua-day-unavailable .rdp-day_button {
+  color: var(--color-muted-foreground);
+  text-decoration: line-through;
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted-foreground) 22%, transparent) 5px 6px);
 }

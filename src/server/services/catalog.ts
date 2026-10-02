@@ -29,13 +29,13 @@ export interface CatalogProductSummary {
   minimumPreorderDays: number | null;
   soldOut: boolean;
   isFeatured: boolean;
+  maxQuantityPerOrder: number | null;
   price: DisplayPrice;
   mainImage: CatalogImage | null;
 }
 
 export interface CatalogProductDetail extends CatalogProductSummary {
   description: string;
-  maxQuantityPerOrder: number | null;
   images: CatalogImage[];
 }
 
@@ -103,6 +103,7 @@ function toSummary(row: ProductRow, images: CatalogImage[]): CatalogProductSumma
     minimumPreorderDays: row.minimumPreorderDays,
     soldOut: row.availability === "SOLD_OUT",
     isFeatured: row.isFeatured,
+    maxQuantityPerOrder: row.maxQuantityPerOrder,
     price: displayPrice({ price: row.price, salePrice: row.salePrice }),
     mainImage: images[0] ?? null,
   };
@@ -161,7 +162,6 @@ export async function getProductBySlug(deps: CatalogDeps, slug: string): Promise
   return {
     ...toSummary(row, images),
     description: row.description,
-    maxQuantityPerOrder: row.maxQuantityPerOrder,
     images,
   };
 }

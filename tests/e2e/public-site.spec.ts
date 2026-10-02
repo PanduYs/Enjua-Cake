@@ -107,7 +107,7 @@ test.describe("Navigasi", () => {
     for (const label of ["Beranda", "Produk", "Cara Pesan", "Tentang Kami", "Lacak Pesanan", "Kontak"]) {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
-    await expect(page.getByRole("link", { name: "Keranjang" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Keranjang/ })).toBeVisible();
     await expect(page.getByRole("banner").getByRole("link", { name: "Pesan Sekarang" })).toBeVisible();
     await expect(page.getByRole("searchbox")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Buka menu" })).toBeHidden();
@@ -129,8 +129,8 @@ test.describe("Navigasi", () => {
     await expect(page.getByRole("button", { name: "Buka menu" })).toBeFocused();
   });
 
-  test("placeholder pages for later phases are reachable and not indexed", async ({ page }) => {
-    for (const [path, heading] of [["/keranjang", "Keranjang"], ["/lacak", "Lacak Pesanan"]] as const) {
+  test("cart, checkout and tracking pages are reachable and not indexed", async ({ page }) => {
+    for (const [path, heading] of [["/keranjang", "Keranjang"], ["/checkout", "Checkout"], ["/lacak", "Lacak Pesanan"]] as const) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
       await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);

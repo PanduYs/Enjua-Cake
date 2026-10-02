@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
+import { AddToCart } from "@/components/cart/add-to-cart";
 import { PriceTag } from "@/components/public/price-tag";
 import { ProductBadges } from "@/components/public/product-badges";
 import { ProductGallery } from "@/components/public/product-gallery";
@@ -69,6 +70,18 @@ export default async function ProductDetailPage({ params }: { params: Params }) 
           <ProductBadges productType={product.productType} soldOut={product.soldOut} />
           <h1 className="text-4xl sm:text-5xl">{product.name}</h1>
           <PriceTag {...product.price} size="lg" />
+          <AddToCart
+            product={{
+              productId: product.id,
+              slug: product.slug,
+              name: product.name,
+              productType: product.productType,
+              unitPrice: product.price.effective,
+              imageUrl: product.mainImage?.url ?? null,
+              maxQuantityPerOrder: product.maxQuantityPerOrder,
+              soldOut: product.soldOut,
+            }}
+          />
 
           <dl className="flex flex-col gap-2 rounded-card bg-surface p-4 text-sm">
             <div className="flex flex-wrap gap-x-2">

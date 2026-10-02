@@ -13,7 +13,7 @@ const VIEWPORTS = [
   { name: "desktop", width: 1920, height: 1080 },
 ] as const;
 
-const PAGES = ["/", "/produk", "/produk?kategori=cakes", "/produk/contoh-brownies-cokelat", "/produk/contoh-pudding-karamel", "/keranjang", "/lacak", "/admin/login"];
+const PAGES = ["/", "/produk", "/produk?kategori=cakes", "/produk/contoh-brownies-cokelat", "/produk/contoh-pudding-karamel", "/keranjang", "/checkout", "/lacak", "/admin/login"];
 
 for (const viewport of VIEWPORTS) {
   test(`no horizontal overflow or clipped header @ ${viewport.name} (${viewport.width}x${viewport.height})`, async ({ page }) => {
@@ -27,7 +27,7 @@ for (const viewport of VIEWPORTS) {
     const isDesktop = viewport.width >= 1024;
     await expect(page.getByRole("navigation", { name: "Navigasi utama" })).toBeVisible({ visible: isDesktop });
     await expect(page.getByRole("button", { name: "Buka menu" })).toBeVisible({ visible: !isDesktop });
-    await expect(page.getByRole("link", { name: "Keranjang" })).toBeInViewport();
+    await expect(page.getByRole("link", { name: /^Keranjang/ })).toBeInViewport();
   });
 }
 

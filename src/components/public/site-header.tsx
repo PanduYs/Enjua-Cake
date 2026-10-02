@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { heroCopy, navItems } from "@/lib/copy/public";
 
-import { CartIcon } from "./icons";
+import { CartLink } from "../cart/cart-link";
 import { MobileNav } from "./mobile-nav";
 
 /** Desktop: logo · nav · cart · CTA. Mobile: logo · cart · drawer (FD-92, FD-93). No search (FD-94). */
@@ -25,9 +25,7 @@ export function SiteHeader({ businessName }: { businessName: string }) {
           </ul>
         </nav>
         <div className="flex items-center gap-1 sm:gap-2">
-          <Link href="/keranjang" className="flex h-11 w-11 items-center justify-center rounded-control hover:bg-surface-muted" aria-label="Keranjang">
-            <CartIcon />
-          </Link>
+          <CartLink />
           <Link
             href="/produk"
             className="hidden min-h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90 lg:inline-flex"

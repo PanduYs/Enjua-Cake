@@ -2,12 +2,16 @@ import Link from "next/link";
 
 import { preorderLeadTimeText } from "@/lib/format/labels";
 
+import { QuickAddButton } from "../cart/add-to-cart";
+
 import { PriceTag } from "./price-tag";
 import { ProductBadges } from "./product-badges";
 import { ProductImage } from "./product-image";
 
 export interface ProductCardData {
+  id: string;
   slug: string;
+  maxQuantityPerOrder: number | null;
   name: string;
   category: { name: string };
   productType: "READY_STOCK" | "PRE_ORDER";
@@ -42,6 +46,18 @@ export function ProductCard({ product, headingLevel = 3 }: { product: ProductCar
         ) : null}
         <div className="mt-auto pt-1">
           <PriceTag {...product.price} />
+          <QuickAddButton
+            product={{
+              productId: product.id,
+              slug: product.slug,
+              name: product.name,
+              productType: product.productType,
+              unitPrice: product.price.effective,
+              imageUrl: product.mainImage?.url ?? null,
+              maxQuantityPerOrder: product.maxQuantityPerOrder,
+              soldOut: product.soldOut,
+            }}
+          />
         </div>
       </div>
     </article>

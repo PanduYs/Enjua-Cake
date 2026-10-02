@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { CartHydrator } from "@/components/cart/cart-hydrator";
 import { FloatingWhatsApp } from "@/components/public/floating-whatsapp";
 import { SiteFooter } from "@/components/public/site-footer";
 import { SiteHeader } from "@/components/public/site-header";
@@ -16,6 +17,7 @@ export default async function PublicLayout({ children }: { children: ReactNode }
       >
         Lewati ke konten
       </a>
+      <CartHydrator />
       <SiteHeader businessName={settings.business_name} />
       <main id="konten" tabIndex={-1} className="focus:outline-none">
         {children}

@@ -1,0 +1,274 @@
+import "server-only";
+
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
+
+import { cartLinesSchema, checkoutInputSchema } from "@/lib/validation/checkout";
+import type { Clock } from "@/server/clock";
+import type { Database } from "@/server/db/client";
+import { categories, productImages, products } from "@/server/db/schema";
+import { displayPrice, type DisplayPrice } from "@/server/domain/catalog/pricing";
+import { validateCartLines, type CartLineIssue, type ProductFacts } from "@/server/domain/checkout/cart-items";
+import { paymentBreakdown, validatePaymentSelection, type PaymentBreakdown, type PaymentMethod, type PaymentOption } from "@/server/domain/checkout/payment-rules";
+import {
+  datesInWindow,
+  evaluatePickupDate,
+  maxPreorderDays,
+  pickupWindow,
+  type PickupDateReason,
+  type PickupDateStatus,
+  type PickupWindow,
+} from "@/server/domain/checkout/pickup-date";
+import { computeTotals, type OrderTotals } from "@/server/domain/checkout/totals";
+import { parseIsoDate, type IsoDate } from "@/server/domain/time/wib";
+import type { PublicBucket } from "@/server/storage/types";
+
+import { capacityFactsForDates } from "./capacity";
+import { getSettings } from "./settings";
+
+export interface CheckoutDeps {
+  db: Database;
+  clock: Clock;
+  publicBucket: Pick<PublicBucket, "publicUrl">;
+}
+
+interface CartProductRow extends ProductFacts {
+  slug: string;
+  name: string;
+  price: number;
+  salePrice: number | null;
+  productType: "READY_STOCK" | "PRE_ORDER";
+  minimumPreorderDays: number | null;
+  imageKey: string | null;
+  imageAlt: string | null;
+}
+
+/** Current product data from the database — never from the browser (FD-32). */
+async function loadCartProducts(db: Database, productIds: string[]): Promise<Map<string, CartProductRow>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: products.id,
+      slug: products.slug,
+      name: products.name,
+      price: products.price,
+      salePrice: products.salePrice,
+      productType: products.productType,
+      minimumPreorderDays: products.minimumPreorderDays,
+      availability: products.availability,
+      isActive: products.isActive,
+      categoryActive: categories.isActive,
+      maxQuantityPerOrder: products.maxQuantityPerOrder,
+    })
+    .from(products)
+    .innerJoin(categories, eq(products.categoryId, categories.id))
+    .where(inArray(products.id, productIds));
+  const images = await db
+    .select({ productId: productImages.productId, key: productImages.storageKey, alt: productImages.altText })
+    .from(productImages)
+    .where(and(inArray(productImages.productId, productIds), eq(productImages.isMain, true)))
+    .orderBy(desc(productImages.isMain), asc(productImages.sortOrder));
+  const mainImage = new Map(images.map((i) => [i.productId, i]));
+  return new Map(
+    rows.map((r) => [r.id, { ...r, imageKey: mainImage.get(r.id)?.key ?? null, imageAlt: mainImage.get(r.id)?.alt ?? null }]),
+  );
+}
+
+export interface CartLineView {
+  productId: string;
+  quantity: number;
+  issue: CartLineIssue | null;
+  product: {
+    slug: string;
+    name: string;
+    productType: "READY_STOCK" | "PRE_ORDER";
+    minimumPreorderDays: number | null;
+    soldOut: boolean;
+    maxQuantityPerOrder: number | null;
+    price: DisplayPrice;
+    image: { url: string; alt: string } | null;
+  } | null;
+}
+
+export interface CartValidation {
+  lines: CartLineView[];
+  /** Totals over valid lines only; authoritative only at order creation. */
+  totals: OrderTotals;
+  hasPreorder: boolean;
+  canCheckout: boolean;
+}
+
+/** Re-validates a browser cart against current data (EC-07, EC-08, EC-15). */
+export async function validateCart(deps: CheckoutDeps, rawLines: unknown): Promise<CartValidation> {
+  const parsed = cartLinesSchema.safeParse(rawLines);
+  if (!parsed.success) {
+    return { lines: [], totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false };
+  }
+  const lines = parsed.data;
+  const productMap = await loadCartProducts(deps.db, [...new Set(lines.map((l) => l.productId))]);
+  const issues = validateCartLines(lines, productMap);
+
+  const views: CartLineView[] = lines.map((line) => {
+    const p = productMap.get(line.productId);
+    const visible = p && p.isActive && p.categoryActive;
+    return {
+      productId: line.productId,
+      quantity: line.quantity,
+      issue: issues.get(line.productId) ?? null,
+      product: visible
+        ? {
+            slug: p.slug,
+            name: p.name,
+            productType: p.productType,
+            minimumPreorderDays: p.minimumPreorderDays,
+            soldOut: p.availability === "SOLD_OUT",
+            maxQuantityPerOrder: p.maxQuantityPerOrder,
+            price: displayPrice({ price: p.price, salePrice: p.salePrice }),
+            image: p.imageKey ? { url: deps.publicBucket.publicUrl(p.imageKey), alt: p.imageAlt ?? p.name } : null,
+          }
+        : null,
+    };
+  });
+
+  const valid = views.filter((v) => v.issue === null);
+  let totals: OrderTotals;
+  try {
+    totals = computeTotals(
+      valid.map((v) => {
+        const p = productMap.get(v.productId)!;
+        return { productId: v.productId, quantity: v.quantity, price: p.price, salePrice: p.salePrice };
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof Error && error.name === "TotalsOverflowError")) throw error;
+    return { lines: views.map((v) => ({ ...v, issue: v.issue ?? "INVALID_QUANTITY" })), totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false };
+  }
+
+  return {
+    lines: views,
+    totals,
+    hasPreorder: valid.some((v) => v.product?.productType === "PRE_ORDER"),
+    canCheckout: valid.length > 0 && valid.length === views.length,
+  };
+}
+
+export interface PickupAvailability {
+  window: PickupWindow;
+  cutoff: string;
+  dates: PickupDateStatus[];
+}
+
+async function availabilityFor(deps: CheckoutDeps, items: ReadonlyArray<{ productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }>): Promise<PickupAvailability> {
+  const settings = await getSettings(deps.db);
+  const now = deps.clock.now();
+  const window = pickupWindow({
+    now,
+    cutoff: settings.pickup_cutoff,
+    bookingHorizonDays: settings.booking_horizon_days,
+    maxPreorderDays: maxPreorderDays(items),
+  });
+  const dates = datesInWindow(window);
+  const facts = await capacityFactsForDates(deps.db, dates, settings.default_capacity, now);
+  return {
+    window,
+    cutoff: settings.pickup_cutoff,
+    dates: dates.map((date) => evaluatePickupDate(date, window, facts.get(date)!)),
+  };
+}
+
+/** Selectable pickup dates for the current cart, each with a reason when unavailable (PRD §7.1). */
+export async function getPickupAvailability(deps: CheckoutDeps, rawLines: unknown): Promise<PickupAvailability> {
+  const parsed = cartLinesSchema.safeParse(rawLines);
+  const productMap = parsed.success ? await loadCartProducts(deps.db, parsed.data.map((l) => l.productId)) : new Map<string, CartProductRow>();
+  return availabilityFor(deps, [...productMap.values()]);
+}
+
+export interface CheckoutSummary {
+  customerName: string;
+  whatsapp: string;
+  notes: string | null;
+  pickupDate: IsoDate;
+  paymentMethod: PaymentMethod;
+  paymentOption: PaymentOption;
+  hasPreorder: boolean;
+  lines: Array<{ productId: string; name: string; quantity: number; effectiveUnitPrice: number; lineSubtotal: number; productType: "READY_STOCK" | "PRE_ORDER" }>;
+  subtotal: number;
+  discountTotal: number;
+  payment: PaymentBreakdown;
+}
+
+export type CheckoutPreviewResult =
+  | { ok: true; summary: CheckoutSummary }
+  | { ok: false; fieldErrors: Partial<Record<string, string>>; cartIssues?: Array<{ productId: string; issue: CartLineIssue }>; pickupReason?: PickupDateReason };
+
+const firstErrors = (error: z.ZodError) => {
+  const out: Partial<Record<string, string>> = {};
+  for (const issue of error.issues) out[String(issue.path[0] ?? "form")] ??= issue.message;
+  return out;
+};
+
+/**
+ * Full server-side checkout validation and pricing (PRD §37, IMPLEMENTATION-PLAN §11.1
+ * steps 1–6). Read-only: no reservation is made. Order creation, which re-runs these
+ * checks under the pickup-date lock, is Phase 4.
+ */
+export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Promise<CheckoutPreviewResult> {
+  const parsed = checkoutInputSchema.safeParse(rawInput);
+  if (!parsed.success) return { ok: false, fieldErrors: firstErrors(parsed.error) };
+  const input = parsed.data;
+
+  const cart = await validateCart(deps, input.items);
+  const cartIssues = cart.lines.filter((l) => l.issue).map((l) => ({ productId: l.productId, issue: l.issue! }));
+  if (!cart.canCheckout) {
+    return { ok: false, fieldErrors: { items: "Periksa kembali isi keranjang." }, cartIssues };
+  }
+
+  const paymentError = validatePaymentSelection(input.paymentMethod, input.paymentOption, cart.hasPreorder);
+  if (paymentError === "CASH_NOT_ALLOWED_FOR_PREORDER") {
+    return { ok: false, fieldErrors: { paymentMethod: "Cash hanya tersedia untuk pesanan Ready Stock." } };
+  }
+  if (paymentError === "OPTION_NOT_ALLOWED_FOR_METHOD") {
+    return { ok: false, fieldErrors: { paymentOption: "Cash saat pickup hanya untuk pembayaran penuh." } };
+  }
+
+  let pickupDate: IsoDate;
+  try {
+    pickupDate = parseIsoDate(input.pickupDate);
+  } catch {
+    return { ok: false, fieldErrors: { pickupDate: "Pilih tanggal pickup." } };
+  }
+  const availability = await availabilityFor(
+    deps,
+    cart.lines.map((l) => ({ productType: l.product!.productType, minimumPreorderDays: l.product!.minimumPreorderDays })),
+  );
+  const status = availability.dates.find((d) => d.date === pickupDate) ?? { date: pickupDate, available: false as const, reason: "OUTSIDE_HORIZON" as const };
+  if (!status.available) {
+    return { ok: false, fieldErrors: { pickupDate: "Tanggal ini tidak tersedia. Silakan pilih tanggal lain." }, pickupReason: status.reason };
+  }
+
+  const names = new Map(cart.lines.map((l) => [l.productId, l.product!]));
+  return {
+    ok: true,
+    summary: {
+      customerName: input.customerName,
+      whatsapp: input.whatsapp,
+      notes: input.notes,
+      pickupDate,
+      paymentMethod: input.paymentMethod,
+      paymentOption: input.paymentOption,
+      hasPreorder: cart.hasPreorder,
+      lines: cart.totals.lines.map((line) => ({
+        productId: line.productId,
+        name: names.get(line.productId)!.name,
+        productType: names.get(line.productId)!.productType,
+        quantity: line.quantity,
+        effectiveUnitPrice: line.effectiveUnitPrice,
+        lineSubtotal: line.lineSubtotal,
+      })),
+      subtotal: cart.totals.subtotal,
+      discountTotal: cart.totals.discountTotal,
+      payment: paymentBreakdown(cart.totals.grandTotal, input.paymentOption),
+    },
+  };
+}
+

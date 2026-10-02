@@ -13,7 +13,8 @@ import { eq, sql } from "drizzle-orm";
 import sharp from "sharp";
 
 import { createDatabase, type Database } from "@/server/db/client";
-import { categories, productImages, products, settings } from "@/server/db/schema";
+import { categories, pickupDates, productImages, products, settings } from "@/server/db/schema";
+import { addCalendarDays, toWibDate } from "@/server/domain/time/wib";
 import { generateStorageKey } from "@/server/storage/keys";
 import { createLocalStorage } from "@/server/storage/local-storage";
 
@@ -74,7 +75,7 @@ async function seed(db: Database, storageDir: string, options: { reset: boolean;
   const storage = createLocalStorage({ baseDir: storageDir, publicBaseUrl: "/storage" });
 
   if (options.reset) {
-    await db.execute(sql`TRUNCATE product_images, products, categories, settings RESTART IDENTITY CASCADE`);
+    await db.execute(sql`TRUNCATE product_images, products, categories, settings, pickup_dates RESTART IDENTITY CASCADE`);
   }
 
   const categoryIds = new Map<string, string>();
@@ -120,6 +121,9 @@ async function seed(db: Database, storageDir: string, options: { reset: boolean;
   }
 
   if (options.e2e) {
+    // A blocked date 10 days ahead (WIB) to exercise the "Tutup" reason in the calendar.
+    const blocked = addCalendarDays(toWibDate(new Date()), 10);
+    await db.insert(pickupDates).values({ date: blocked, isBlocked: true, blockReason: "E2E" }).onConflictDoNothing();
     for (const [key, value] of Object.entries(E2E_SETTINGS)) {
       await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
     }

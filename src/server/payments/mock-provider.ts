@@ -87,6 +87,11 @@ export class MockPaymentProvider implements PaymentProvider {
     return { providerReference, status: tx.status, amount: tx.amount, paidAt: tx.paidAt };
   }
 
+  async cancelQris(providerReference: string): Promise<void> {
+    const tx = this.transactions.get(providerReference);
+    if (tx && tx.status === "PENDING") tx.status = "EXPIRED";
+  }
+
   async parseAndVerifyWebhook(request: Request): Promise<WebhookParseResult> {
     const rawBody = await request.text();
     const payloadHash = sha256Hex(rawBody);

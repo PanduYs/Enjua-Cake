@@ -47,6 +47,8 @@ export interface PaymentProvider {
   parseAndVerifyWebhook(request: Request): Promise<WebhookParseResult>;
   /** Defense in depth: re-check status with the provider before applying a webhook. */
   getTransactionStatus(providerReference: string): Promise<ProviderTransactionStatus | null>;
+  /** Optional: invalidate a replaced pending QR at the provider (TD-20). Best effort. */
+  cancelQris?(providerReference: string): Promise<void>;
 }
 
 export class PaymentProviderError extends Error {
@@ -57,4 +59,9 @@ export class PaymentProviderError extends Error {
     super(message);
     this.name = "PaymentProviderError";
   }
+}
+
+/** Name-based check: bundlers may duplicate this module across chunks (see isStorageKeyError). */
+export function isPaymentProviderError(error: unknown): error is PaymentProviderError {
+  return error instanceof Error && error.name === "PaymentProviderError";
 }

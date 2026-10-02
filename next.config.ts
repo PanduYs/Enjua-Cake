@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Native Argon2 binding must stay a Node.js external, not bundled.
   serverExternalPackages: ["@node-rs/argon2"],
+  experimental: {
+    // Admin uploads payment proofs (≤ 5 MB, FD-50) through a Server Action.
+    serverActions: { bodySizeLimit: "6mb" },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -1,13 +1,14 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
 import { admins, auditLogs, orderItems, orders, paymentTransactions } from "@/server/db/schema";
 import { allowedTransitions, candidateTransitions, type OrderStatus } from "@/server/domain/orders/state-machine";
 
-import { expireDueReservations, expireIfDue } from "./order-lifecycle";
+import { expireDueReservations, expireIfDue, expireRemainingPaymentsIfDue } from "./order-lifecycle";
+import { getAdminPaymentDetail } from "./payment-admin";
 
 export const ADMIN_ORDER_STATUSES = ["NEW", "CONFIRMED", "PROCESSING", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"] as const;
 
@@ -37,6 +38,7 @@ export async function listAdminOrders(db: Database, clock: Clock, filters: { sta
 
 export async function getAdminOrderDetail(db: Database, orderId: string, clock: Clock) {
   await expireIfDue(db, orderId, clock);
+  await expireRemainingPaymentsIfDue(db, clock.now(), orderId);
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) return null;
 
@@ -56,7 +58,13 @@ export async function getAdminOrderDetail(db: Database, orderId: string, clock: 
       })
       .from(auditLogs)
       .leftJoin(admins, eq(auditLogs.actorAdminId, admins.id))
-      .where(and(eq(auditLogs.entityType, "order"), eq(auditLogs.entityId, orderId)))
+      .where(
+        or(
+          and(eq(auditLogs.entityType, "order"), eq(auditLogs.entityId, orderId)),
+          // Payment events are logged per transaction and carry their order id.
+          and(eq(auditLogs.entityType, "payment_transaction"), sql`${auditLogs.newValue}->>'orderId' = ${orderId}`),
+        ),
+      )
       .orderBy(asc(auditLogs.id)),
   ]);
 
@@ -78,6 +86,7 @@ export async function getAdminOrderDetail(db: Database, orderId: string, clock: 
     order,
     items,
     transactions,
+    payments: await getAdminPaymentDetail(db, orderId),
     audit,
     cancelledBy,
     /** Targets the admin may choose now (FD-116); shown in the UI. */

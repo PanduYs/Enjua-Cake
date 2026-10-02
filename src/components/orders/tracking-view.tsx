@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
+
 import { PAYMENT_METHOD_LABEL, PAYMENT_OPTION_LABEL } from "@/lib/copy/checkout";
 import { CUSTOMER_CANCELLATION_REASON, ORDER_STATUS_LABEL, ORDER_TIMELINE, PAYMENT_STATUS_LABEL } from "@/lib/copy/orders";
-import { formatIsoDateLong, formatWibDateTime } from "@/lib/format/date";
+import { formatIsoDateLong } from "@/lib/format/date";
 import { formatRupiah } from "@/lib/format/rupiah";
 import type { TrackingView as View } from "@/lib/orders/tracking-view";
 
@@ -36,10 +38,16 @@ function Timeline({ status }: { status: View["orderStatus"] }) {
 }
 
 /** Customer tracking view (FD-66–FD-69): no phone number, no admin notes, no token. */
-export function TrackingView({ view, whatsapp }: { view: View; whatsapp: { question: string | null; cancellation: string | null } }) {
+export function TrackingView({
+  view,
+  whatsapp,
+  paymentSlot,
+}: {
+  view: View;
+  whatsapp: { question: string | null; cancellation: string | null };
+  paymentSlot?: ReactNode;
+}) {
   const cancelled = view.orderStatus === "CANCELLED";
-  const outstanding = view.paymentMethod !== "CASH" && view.orderStatus === "NEW" && view.paidAmount === 0;
-  const dueNow = view.paymentOption === "DP_50" && view.dpAmount !== null ? view.dpAmount : view.grandTotal;
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,6 +72,8 @@ export function TrackingView({ view, whatsapp }: { view: View; whatsapp: { quest
           <Timeline status={view.orderStatus} />
         )}
       </section>
+
+      {paymentSlot}
 
       <section aria-labelledby="pembayaran" className="flex flex-col gap-2 rounded-card bg-surface p-5 text-sm sm:p-6">
         <h2 id="pembayaran" className="mb-1 text-xl">
@@ -92,13 +102,6 @@ export function TrackingView({ view, whatsapp }: { view: View; whatsapp: { quest
           <dt>Sisa pembayaran</dt>
           <dd className="text-right">{formatRupiah(view.remainingAmount)}</dd>
         </dl>
-        {outstanding && view.reservationExpiresAt ? (
-          <p className="mt-2 rounded-control bg-pastel-peach px-4 py-3">
-            Bayar {formatRupiah(dueNow)} sebelum <strong>{formatWibDateTime(view.reservationExpiresAt)} WIB</strong>. Jika lewat batas waktu, pesanan dibatalkan
-            otomatis.
-          </p>
-        ) : null}
-        {view.paymentMethod === "CASH" && !cancelled && view.remainingAmount > 0 ? <p className="mt-2">Bayar penuh saat mengambil pesanan.</p> : null}
       </section>
 
       <section aria-labelledby="detail-pesanan" className="flex flex-col gap-2 rounded-card bg-surface p-5 text-sm sm:p-6">

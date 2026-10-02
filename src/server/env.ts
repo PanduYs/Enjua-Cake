@@ -7,9 +7,11 @@ const envSchema = z.object({
   APP_URL: z.url(),
   DATABASE_URL: z.string().min(1),
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
-  PAYMENT_PROVIDER: z.enum(["mock"]).default("mock"),
+  PAYMENT_PROVIDER: z.enum(["mock", "midtrans"]).default("mock"),
   PAYMENT_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
   MOCK_PAYMENT_WEBHOOK_SECRET: z.string().min(16).optional(),
+  /** Midtrans server key for the environment in PAYMENT_ENV (sandbox key for development/staging). */
+  MIDTRANS_SERVER_KEY: z.string().min(1).optional(),
   STORAGE_DRIVER: z.enum(["local"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().min(1).default(".storage"),
   CRON_SECRET: z.string().min(16).optional(),
@@ -33,6 +35,9 @@ export function getEnv(): Env {
     }
     if (parsed.data.NODE_ENV === "production" && parsed.data.PAYMENT_ENV === "production" && parsed.data.PAYMENT_PROVIDER === "mock") {
       throw new Error("MockProvider must not be used with PAYMENT_ENV=production");
+    }
+    if (parsed.data.PAYMENT_PROVIDER === "midtrans" && !parsed.data.MIDTRANS_SERVER_KEY) {
+      throw new Error("MIDTRANS_SERVER_KEY is required when PAYMENT_PROVIDER=midtrans");
     }
     cached = parsed.data;
   }

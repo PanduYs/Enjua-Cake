@@ -9,7 +9,7 @@ import { checkTransition, type OrderStatus, type TransitionError } from "@/serve
 import { writeAudit, type AuditActor } from "@/server/observability/audit";
 import { generateTrackingToken, hashTrackingToken } from "@/server/security/tracking-token";
 
-type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 const lockedOrderColumns = {
   id: orders.id,
@@ -50,47 +50,66 @@ function isExpirable(
   );
 }
 
+/**
+ * Expires a locked order if due (caller holds the row lock). Used inside the
+ * webhook / proof-review transactions so they see the final state (§16 step 6).
+ */
+export async function expireLockedOrderIfDue(tx: Tx, orderId: string, now: Date): Promise<boolean> {
+  const order = await lockOrder(tx, orderId);
+  if (!order || !isExpirable(order, now)) return false;
+  if (checkTransition("NEW", "CANCELLED", "SYSTEM", { paymentMethod: order.paymentMethod, paymentStatus: order.paymentStatus, systemReason: "PAYMENT_EXPIRED" })) return false;
+
+  await tx
+    .update(orders)
+    .set({
+      orderStatus: "CANCELLED",
+      paymentStatus: "EXPIRED",
+      cancellationReason: "PAYMENT_EXPIRED",
+      cancelledByType: "SYSTEM",
+      cancelledAt: now,
+      updatedAt: now,
+    })
+    .where(eq(orders.id, orderId));
+  await tx
+    .update(paymentTransactions)
+    .set({ status: "EXPIRED", updatedAt: now })
+    .where(and(eq(paymentTransactions.orderId, orderId), inArray(paymentTransactions.status, ["WAITING_PAYMENT", "FAILED"])));
+  await writeAudit(tx, {
+    entityType: "order",
+    entityId: orderId,
+    eventType: "ORDER_STATUS_CHANGED",
+    oldValue: { orderStatus: "NEW", paymentStatus: order.paymentStatus },
+    newValue: { orderStatus: "CANCELLED", paymentStatus: "EXPIRED" },
+    reason: "PAYMENT_EXPIRED",
+    actor: { type: "SYSTEM" },
+  });
+  return true;
+}
+
 /** Idempotent; safe to call from any read path (TD-07). Returns true when it expired the order. */
 export async function expireIfDue(db: Database, orderId: string, clock: Clock): Promise<boolean> {
   const now = clock.now();
-  return db.transaction(async (tx) => {
-    const order = await lockOrder(tx, orderId);
-    if (!order || !isExpirable(order, now)) return false;
-    if (
-      checkTransition("NEW", "CANCELLED", "SYSTEM", {
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        systemReason: "PAYMENT_EXPIRED",
-      })
-    )
-      return false;
+  return db.transaction((tx) => expireLockedOrderIfDue(tx, orderId, now));
+}
 
-    await tx
-      .update(orders)
-      .set({
-        orderStatus: "CANCELLED",
-        paymentStatus: "EXPIRED",
-        cancellationReason: "PAYMENT_EXPIRED",
-        cancelledByType: "SYSTEM",
-        cancelledAt: now,
-        updatedAt: now,
-      })
-      .where(eq(orders.id, orderId));
-    await tx
-      .update(paymentTransactions)
-      .set({ status: "EXPIRED", updatedAt: now })
-      .where(and(eq(paymentTransactions.orderId, orderId), inArray(paymentTransactions.status, ["WAITING_PAYMENT", "FAILED"])));
-    await writeAudit(tx, {
-      entityType: "order",
-      entityId: orderId,
-      eventType: "ORDER_STATUS_CHANGED",
-      oldValue: { orderStatus: "NEW", paymentStatus: order.paymentStatus },
-      newValue: { orderStatus: "CANCELLED", paymentStatus: "EXPIRED" },
-      reason: "PAYMENT_EXPIRED",
-      actor: { type: "SYSTEM" },
-    });
-    return true;
-  });
+/**
+ * Remaining-payment expiry (TD-09, DI-01): only the transaction becomes EXPIRED;
+ * the order, its status, and its slot are never touched.
+ */
+export async function expireRemainingPaymentsIfDue(db: Pick<Database, "update">, now: Date, orderId?: string): Promise<number> {
+  const rows = await db
+    .update(paymentTransactions)
+    .set({ status: "EXPIRED", updatedAt: now })
+    .where(
+      and(
+        eq(paymentTransactions.purpose, "REMAINING"),
+        eq(paymentTransactions.status, "WAITING_PAYMENT"),
+        lte(paymentTransactions.expiresAt, now),
+        orderId ? eq(paymentTransactions.orderId, orderId) : undefined,
+      ),
+    )
+    .returning({ id: paymentTransactions.id });
+  return rows.length;
 }
 
 /**
@@ -115,13 +134,8 @@ export async function expireDueReservations(db: Database, clock: Clock, limit = 
   let ordersExpired = 0;
   for (const { id } of due) if (await expireIfDue(db, id, clock)) ordersExpired++;
 
-  const expiredRemaining = await db
-    .update(paymentTransactions)
-    .set({ status: "EXPIRED", updatedAt: now })
-    .where(and(eq(paymentTransactions.purpose, "REMAINING"), eq(paymentTransactions.status, "WAITING_PAYMENT"), lte(paymentTransactions.expiresAt, now)))
-    .returning({ id: paymentTransactions.id });
-
-  return { ordersExpired, remainingPaymentsExpired: expiredRemaining.length };
+  const remainingPaymentsExpired = await expireRemainingPaymentsIfDue(db, now);
+  return { ordersExpired, remainingPaymentsExpired };
 }
 
 export type TransitionResult = { ok: true; from: OrderStatus; to: OrderStatus } | { ok: false; error: TransitionError | "NOT_FOUND" | "STALE_STATUS" };
@@ -142,54 +156,59 @@ export async function transitionOrder(
   clock: Clock,
 ): Promise<TransitionResult> {
   const now = clock.now();
-  return db.transaction(async (tx) => {
-    const order = await lockOrder(tx, args.orderId);
-    if (!order) return { ok: false, error: "NOT_FOUND" } as const;
-    if (args.expectedFrom && order.orderStatus !== args.expectedFrom) return { ok: false, error: "STALE_STATUS" } as const;
+  return db.transaction((tx) => transitionLockedOrder(tx, args, now));
+}
 
-    const reason = args.reason?.trim() || null;
-    const error = checkTransition(order.orderStatus, args.to, args.actor.type, {
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      reason,
-    });
-    if (error) return { ok: false, error } as const;
+type TransitionArgs = Parameters<typeof transitionOrder>[1];
 
-    await tx
-      .update(orders)
-      .set({
-        orderStatus: args.to,
-        updatedAt: now,
-        ...(args.to === "CANCELLED"
-          ? {
-              cancellationReason: reason,
-              cancelledByType: args.actor.type,
-              cancelledByAdminId: args.actor.type === "ADMIN" ? args.actor.adminId : null,
-              cancelledAt: now,
-            }
-          : {}),
-      })
-      .where(eq(orders.id, args.orderId));
+/** transitionOrder inside an existing transaction (payment approval, webhook). */
+export async function transitionLockedOrder(tx: Tx, args: TransitionArgs, now: Date): Promise<TransitionResult> {
+  const order = await lockOrder(tx, args.orderId);
+  if (!order) return { ok: false, error: "NOT_FOUND" } as const;
+  if (args.expectedFrom && order.orderStatus !== args.expectedFrom) return { ok: false, error: "STALE_STATUS" } as const;
 
-    // Cancelling releases the slot implicitly (cancelled orders are not active, §13.2).
-    if (args.to === "CANCELLED") {
-      await tx
-        .update(paymentTransactions)
-        .set({ status: "VOIDED", updatedAt: now })
-        .where(and(eq(paymentTransactions.orderId, args.orderId), eq(paymentTransactions.status, "WAITING_PAYMENT")));
-    }
-
-    await writeAudit(tx, {
-      entityType: "order",
-      entityId: args.orderId,
-      eventType: "ORDER_STATUS_CHANGED",
-      oldValue: { orderStatus: order.orderStatus },
-      newValue: { orderStatus: args.to },
-      reason,
-      actor: args.actor,
-    });
-    return { ok: true, from: order.orderStatus, to: args.to } as const;
+  const reason = args.reason?.trim() || null;
+  const error = checkTransition(order.orderStatus, args.to, args.actor.type, {
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    reason,
   });
+  if (error) return { ok: false, error } as const;
+
+  await tx
+    .update(orders)
+    .set({
+      orderStatus: args.to,
+      updatedAt: now,
+      ...(args.to === "CANCELLED"
+        ? {
+            cancellationReason: reason,
+            cancelledByType: args.actor.type,
+            cancelledByAdminId: args.actor.type === "ADMIN" ? args.actor.adminId : null,
+            cancelledAt: now,
+          }
+        : {}),
+    })
+    .where(eq(orders.id, args.orderId));
+
+  // Cancelling releases the slot implicitly (cancelled orders are not active, §13.2).
+  if (args.to === "CANCELLED") {
+    await tx
+      .update(paymentTransactions)
+      .set({ status: "VOIDED", updatedAt: now })
+      .where(and(eq(paymentTransactions.orderId, args.orderId), eq(paymentTransactions.status, "WAITING_PAYMENT")));
+  }
+
+  await writeAudit(tx, {
+    entityType: "order",
+    entityId: args.orderId,
+    eventType: "ORDER_STATUS_CHANGED",
+    oldValue: { orderStatus: order.orderStatus },
+    newValue: { orderStatus: args.to },
+    reason,
+    actor: args.actor,
+  });
+  return { ok: true, from: order.orderStatus, to: args.to } as const;
 }
 
 /**

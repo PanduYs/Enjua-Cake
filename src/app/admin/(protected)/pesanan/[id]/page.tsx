@@ -14,6 +14,7 @@ import { getDb } from "@/server/db/client";
 import { getAdminOrderDetail } from "@/server/services/admin-orders";
 
 import { regenerateTokenAction, transitionOrderAction } from "../actions";
+import { PaymentSection } from "./payment-section";
 
 export const metadata: Metadata = { title: "Detail Pesanan" };
 
@@ -26,21 +27,20 @@ const EVENT_LABEL: Record<string, string> = {
   ORDER_CREATED: "Pesanan dibuat",
   ORDER_STATUS_CHANGED: "Status diubah",
   TRACKING_TOKEN_REGENERATED: "Kode akses dibuat ulang",
+  QRIS_CREATED: "QRIS dibuat",
+  PAYMENT_CONFIRMED: "Pembayaran terverifikasi",
+  PAYMENT_FAILED: "Pembayaran gagal",
+  PAYMENT_EXPIRED: "Pembayaran kedaluwarsa",
+  PAYMENT_EXCEPTION_OPENED: "Payment Exception dibuat",
+  PAYMENT_EXCEPTION_RESOLVED: "Payment Exception diselesaikan",
+  PAYMENT_PROOF_UPLOADED: "Bukti transfer diunggah",
+  PAYMENT_PROOF_APPROVED: "Bukti transfer disetujui",
+  PAYMENT_PROOF_REJECTED: "Bukti transfer ditolak",
+  TRANSFER_REMAINING_STARTED: "Pelunasan via transfer dimulai",
+  CASH_MARKED_PAID: "Cash ditandai lunas",
+  REFUND_RECORDED: "Refund dicatat",
+  REFUND_COMPLETED: "Refund selesai",
 };
-const TX_STATUS_LABEL: Record<string, string> = {
-  WAITING_PAYMENT: "Menunggu Pembayaran",
-  WAITING_VERIFICATION: "Menunggu Verifikasi",
-  PAID: "Terbayar",
-  FAILED: "Gagal",
-  EXPIRED: "Kedaluwarsa",
-  VOIDED: "Dibatalkan",
-};
-const PURPOSE_LABEL = {
-  DP: "DP",
-  FULL: "Pembayaran Penuh",
-  REMAINING: "Pelunasan",
-} as const;
-
 function describeChange(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const v = value as { orderStatus?: keyof typeof ORDER_STATUS_LABEL };
@@ -53,7 +53,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   if (!z.uuid().safeParse(id).success) notFound();
   const detail = await getAdminOrderDetail(getDb(), id, systemClock);
   if (!detail) notFound();
-  const { order, items, transactions, audit, cancelledBy, allowed, blocked } = detail;
+  const { order, items, audit, cancelledBy, allowed, blocked } = detail;
 
   return (
     <section className="flex flex-col gap-6">
@@ -156,22 +156,9 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
                 </>
               ) : null}
             </dl>
-            {transactions.length > 0 ? (
-              <>
-                <h3 className="mt-4 mb-1 font-semibold">Transaksi</h3>
-                <ul className="divide-y divide-border">
-                  {transactions.map((t) => (
-                    <li key={t.id} className="flex flex-wrap justify-between gap-2 py-2">
-                      <span>
-                        {PURPOSE_LABEL[t.purpose]} · {PAYMENT_METHOD_LABEL[t.method]} · {TX_STATUS_LABEL[t.status] ?? t.status}
-                      </span>
-                      <span>{formatRupiah(t.amount)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
           </section>
+
+          <PaymentSection detail={detail} />
         </div>
 
         <div className="flex flex-col gap-6">

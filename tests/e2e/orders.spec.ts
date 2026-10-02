@@ -1,45 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { E2E_ORDERS_ADMIN } from "./fixtures";
-import { addProductToCart, clickDayWithStatus } from "./helpers";
+import { createOrderViaUi, expectNoSeriousAxe, loginOrdersAdmin } from "./helpers";
 
-async function expectNoSeriousAxe(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  expect(
-    results.violations
-      .filter((v) => v.impact === "serious" || v.impact === "critical")
-      .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
-  ).toEqual([]);
-}
-
-/** Customer checkout through to the success page; returns what the customer must keep. */
-async function createCashOrder(page: Page, customerName: string) {
-  await addProductToCart(page, "contoh-cookies-butter", 2);
-  await page.goto("/checkout");
-  await clickDayWithStatus(page, "tersedia");
-  await page.getByLabel("Nama").fill(customerName);
-  await page.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");
-  await page.getByRole("radio", { name: /Cash saat Pickup/ }).check();
-  await page.getByRole("button", { name: "Lanjut ke Konfirmasi" }).click();
-  await page.getByRole("region", { name: "Konfirmasi Pesanan" }).getByRole("button", { name: "Buat Pesanan" }).click();
-
-  await expect(page).toHaveURL(/\/pesanan\/sukses$/);
-  await expect(page.getByText("Pesanan berhasil dibuat.")).toBeVisible();
-  const orderNumber = (await page.getByTestId("order-number").textContent())!.trim();
-  const token = (await page.getByTestId("tracking-token").textContent())!.trim();
-  expect(orderNumber).toMatch(/^ENC-\d{8}-[0-9A-HJKMNP-TV-Z]{4}$/);
-  expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  return { orderNumber, token };
-}
-
-async function loginOrdersAdmin(page: Page) {
-  await page.goto("/admin/login");
-  await page.getByLabel("Email").fill(E2E_ORDERS_ADMIN.email);
-  await page.getByLabel("Password").fill(E2E_ORDERS_ADMIN.password);
-  await page.getByRole("button", { name: "Masuk" }).click();
-  await expect(page).toHaveURL(/\/admin$/);
-}
+const createCashOrder = (page: Page, customerName: string) => createOrderViaUi(page, { customerName });
 
 test.describe("orders (Phase 4)", () => {
   test("checkout creates an order; success page → tracking link opens the order without leaving the code in the URL", async ({ page, context }) => {

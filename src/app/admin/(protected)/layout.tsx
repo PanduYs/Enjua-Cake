@@ -24,6 +24,9 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
             <Link href="/admin/pesanan" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
               Pesanan
             </Link>
+            <Link href="/admin/pembayaran" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
+              Pembayaran
+            </Link>
             <Link href="/admin/akun" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
               Akun
             </Link>

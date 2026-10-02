@@ -2,24 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { systemClock } from "@/server/clock";
 import { getDb } from "@/server/db/client";
-import { getClientIp } from "@/server/security/request";
+import { getClientIp, isSameOriginRequest } from "@/server/security/request";
 import { issueTrackingCookie, TRACKING_COOKIE, trackingCookieOptions } from "@/server/security/tracking-cookie";
 import { verifyTrackingAccess } from "@/server/services/tracking";
 
-/** Same-origin check: route handlers lack the Server Action Origin guard. */
-function isSameOrigin(request: NextRequest): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return false;
-  try {
-    return new URL(origin).host === (request.headers.get("x-forwarded-host") ?? request.headers.get("host"));
-  } catch {
-    return false;
-  }
-}
-
 /** Order number + access code → HttpOnly tracking session (TD-11, FD-66). */
 export async function POST(request: NextRequest) {
-  if (!isSameOrigin(request)) return NextResponse.json({ ok: false, code: "INVALID" }, { status: 403 });
+  if (!isSameOriginRequest(request.headers)) return NextResponse.json({ ok: false, code: "INVALID" }, { status: 403 });
 
   let body: unknown;
   try {

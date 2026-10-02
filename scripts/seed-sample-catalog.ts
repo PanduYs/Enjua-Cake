@@ -59,6 +59,8 @@ const E2E_SETTINGS: Record<string, unknown> = {
   whatsapp_number: "081234567890",
   address: "Alamat pickup contoh (data E2E)",
   pickup_hours: "Contoh: 10.00–17.00 WIB",
+  // Fictitious account for E2E only — never real client data.
+  bank_accounts: [{ bankName: "Bank Contoh (E2E)", accountNumber: "0000000000", accountHolder: "Data Uji E2E" }],
 };
 
 async function placeholderImage(color: string): Promise<Uint8Array> {

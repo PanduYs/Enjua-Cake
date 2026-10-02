@@ -92,3 +92,10 @@ export async function getTrackingView(db: Database, session: { orderId: string; 
     cancellation: o.orderStatus !== "CANCELLED" ? null : o.cancellationReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "ADMIN",
   };
 }
+
+/** Order id for a tracking session whose access code is still current (TD-11), else null. */
+export async function resolveTrackingSession(db: Database, session: { orderId: string; tokenRef: string } | null): Promise<string | null> {
+  if (!session) return null;
+  const [o] = await db.select({ hash: orders.trackingTokenHash }).from(orders).where(eq(orders.id, session.orderId)).limit(1);
+  return o && trackingTokenRef(o.hash) === session.tokenRef ? session.orderId : null;
+}

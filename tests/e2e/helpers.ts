@@ -13,6 +13,8 @@ import { ORDERS_ADMIN_STATE } from "./fixtures";
  */
 export async function clickDayWithStatus(page: Page, status: string): Promise<string> {
   const escaped = status.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Wait until the calendar shows availability (loaded asynchronously) before searching.
+  await expect(page.getByRole("grid").getByRole("button", { name: /, (tersedia|tidak tersedia: .+)$/ }).first()).toBeVisible();
   const day = page.getByRole("grid").getByRole("button", { name: new RegExp(`, ${escaped}$`) }).first();
   for (let i = 0; i < 4 && (await day.count()) === 0; i++) {
     await page.getByRole("button", { name: "Ke bulan berikutnya" }).click();

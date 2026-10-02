@@ -2,13 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { systemClock } from "@/server/clock";
 import { getDb } from "@/server/db/client";
-import { getClientIp, isSameOriginRequest } from "@/server/security/request";
+import { declaredContentLength, getClientIp, isSameOriginRequest } from "@/server/security/request";
 import { issueTrackingCookie, TRACKING_COOKIE, trackingCookieOptions } from "@/server/security/tracking-cookie";
 import { verifyTrackingAccess } from "@/server/services/tracking";
 
 /** Order number + access code → HttpOnly tracking session (TD-11, FD-66). */
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request.headers)) return NextResponse.json({ ok: false, code: "INVALID" }, { status: 403 });
+
+  const declared = declaredContentLength(request.headers);
+  if (declared === null || declared > 4 * 1024) return NextResponse.json({ ok: false, code: "INVALID" }, { status: 413 });
 
   let body: unknown;
   try {

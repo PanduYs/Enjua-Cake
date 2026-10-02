@@ -10,6 +10,8 @@ const envSchema = z.object({
   PAYMENT_PROVIDER: z.enum(["mock", "midtrans"]).default("mock"),
   PAYMENT_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
   MOCK_PAYMENT_WEBHOOK_SECRET: z.string().min(16).optional(),
+  /** Required to run MockProvider in a production build (E2E/staging only). */
+  ALLOW_MOCK_PAYMENTS: z.enum(["true", "false"]).default("false"),
   /** Midtrans server key for the environment in PAYMENT_ENV (sandbox key for development/staging). */
   MIDTRANS_SERVER_KEY: z.string().min(1).optional(),
   STORAGE_DRIVER: z.enum(["local"]).default("local"),
@@ -35,6 +37,11 @@ export function getEnv(): Env {
     }
     if (parsed.data.NODE_ENV === "production" && parsed.data.PAYMENT_ENV === "production" && parsed.data.PAYMENT_PROVIDER === "mock") {
       throw new Error("MockProvider must not be used with PAYMENT_ENV=production");
+    }
+    // Defense in depth: the mock lets anyone "pay" from the tracking page, so a
+    // production build refuses it unless explicitly allowed (E2E / staging UAT).
+    if (parsed.data.NODE_ENV === "production" && parsed.data.PAYMENT_PROVIDER === "mock" && parsed.data.ALLOW_MOCK_PAYMENTS !== "true") {
+      throw new Error("PAYMENT_PROVIDER=mock in a production build requires ALLOW_MOCK_PAYMENTS=true (never on the live site)");
     }
     if (parsed.data.PAYMENT_PROVIDER === "midtrans" && !parsed.data.MIDTRANS_SERVER_KEY) {
       throw new Error("MIDTRANS_SERVER_KEY is required when PAYMENT_PROVIDER=midtrans");

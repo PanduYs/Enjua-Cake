@@ -18,8 +18,11 @@ export interface CatalogAdminDeps {
 type Fail = { ok: false; error: string; fieldErrors?: Partial<Record<string, string>> };
 type Ok<T = object> = { ok: true } & T;
 
-/** Product photos (§24): JPEG/PNG/WebP by magic bytes, ≤ 8 MB in, stored as WebP ≤ 1600 px. */
-export const PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * Product photos (§24): JPEG/PNG/WebP by magic bytes, ≤ 5 MB in (fits the 6 MB
+ * Server Action body limit in next.config.ts), stored as WebP ≤ 1600 px.
+ */
+export const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_MAX_EDGE = 1600;
 
 export function detectImageType(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
@@ -32,7 +35,7 @@ export function detectImageType(bytes: Uint8Array): "image/jpeg" | "image/png" |
 
 export const IMAGE_ERROR = {
   EMPTY: "Pilih file foto.",
-  TOO_LARGE: "Ukuran foto maksimal 8 MB.",
+  TOO_LARGE: "Ukuran foto maksimal 5 MB.",
   UNSUPPORTED_TYPE: "Format foto harus JPG, PNG, atau WebP.",
   UNREADABLE: "Foto tidak dapat dibaca. Coba file lain.",
 } as const;

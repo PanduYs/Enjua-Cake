@@ -10,6 +10,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Resolve <title>/meta before streaming the body for every client, so assistive
+  // technology always finds the page title on load (metadata here is static and cheap).
+  htmlLimitedBots: /.*/,
   // Native Argon2 binding must stay a Node.js external, not bundled.
   serverExternalPackages: ["@node-rs/argon2"],
   experimental: {

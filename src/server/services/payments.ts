@@ -11,6 +11,7 @@ import { orders, paymentProofs, paymentTransactions, refunds } from "@/server/db
 import { derivePaymentStatus, initialQrExpiry, paidAmountOf } from "@/server/domain/payments/payment-status";
 import { PROOF_EXTENSION, validateProofFile, type ProofFileError } from "@/server/domain/payments/proof-file";
 import { writeAudit, type AuditActor } from "@/server/observability/audit";
+import { logger } from "@/server/observability/logger";
 import type { PaymentProvider } from "@/server/payments/types";
 import { consumeRateLimit } from "@/server/security/rate-limit";
 import type { PrivateBucket } from "@/server/storage/types";
@@ -133,7 +134,8 @@ export async function requestQrisPayment(deps: PaymentDeps, orderId: string): Pr
       let qr;
       try {
         qr = await deps.provider.createQris({ transactionId, amount: plan.amount, expiresAt: plan.expiresAt });
-      } catch {
+      } catch (error) {
+        logger.warn("payment_provider_create_qris_failed", { provider: deps.provider.name, error });
         throw new ProviderFailure();
       }
       const values = {

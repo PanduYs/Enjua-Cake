@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Database } from "@/server/db/client";
 import { settings } from "@/server/db/schema";
 import { parseTimeOfDay } from "@/server/domain/time/wib";
+import { logger } from "@/server/observability/logger";
 
 const optionalText = z.string().trim().min(1).nullable();
 const linkSchema = z.object({ label: z.string().trim().min(1), url: z.url() });
@@ -72,7 +73,7 @@ export function resolveSettings(rows: ReadonlyArray<{ key: string; value: unknow
 
 export async function getSettings(db: Database): Promise<Settings> {
   const rows = await db.select({ key: settings.key, value: settings.value }).from(settings);
-  return resolveSettings(rows, (key) => console.warn(`[settings] invalid stored value for "${key}", using default`));
+  return resolveSettings(rows, (key) => logger.warn("settings_invalid_value", { key }));
 }
 
 export type PublicSiteSettings = Pick<

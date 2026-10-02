@@ -264,10 +264,16 @@ test("admin accounts: create, sign in, deactivate (session ends immediately)", a
   await expect(second).toHaveURL(/\/admin\/login$/);
 });
 
+// Full viewport matrix of plan §33.
 for (const viewport of [
+  { name: "phone-small", width: 320, height: 568 },
   { name: "mobile", width: 360, height: 800 },
+  { name: "phone-large", width: 390, height: 844 },
+  { name: "phone-landscape", width: 844, height: 390 },
   { name: "tablet", width: 768, height: 1024 },
-  { name: "desktop", width: 1366, height: 768 },
+  { name: "tablet-landscape", width: 1024, height: 768 },
+  { name: "laptop", width: 1366, height: 768 },
+  { name: "desktop", width: 1920, height: 1080 },
 ]) {
   test(`admin modules have no horizontal overflow and no serious axe violations @ ${viewport.name}`, async ({ browser }) => {
     const page = await adminPage(browser, { width: viewport.width, height: viewport.height });
@@ -275,7 +281,7 @@ for (const viewport of [
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 }), path).toBeVisible();
       await noHorizontalOverflow(page);
-      if (viewport.name === "mobile") await expectNoSeriousAxe(page);
+      if (viewport.name === "mobile" || viewport.name === "laptop") await expectNoSeriousAxe(page);
     }
   });
 }

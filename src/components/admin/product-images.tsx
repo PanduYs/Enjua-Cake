@@ -71,7 +71,7 @@ export function ProductImages({
       <form ref={addForm} onSubmit={submitWithoutReset(formAction)} className="flex flex-col gap-3 border-t border-border pt-4" noValidate>
         <h3 className="font-semibold">Tambah foto</h3>
         <input type="hidden" name="productId" value={productId} />
-        <FileField label="File foto" name="image" id="new-image" accept="image/jpeg,image/png,image/webp" error={state.fieldErrors?.image} hint="JPG, PNG, atau WebP, maksimal 8 MB." />
+        <FileField label="File foto" name="image" id="new-image" accept="image/jpeg,image/png,image/webp" error={state.fieldErrors?.image} hint="JPG, PNG, atau WebP, maksimal 5 MB." />
         <TextField label="Teks alternatif foto" name="altText" id="new-image-alt" defaultValue={state.values?.altText ?? ""} error={state.fieldErrors?.altText} />
         <CheckboxField label="Jadikan foto utama" name="makeMain" id="new-image-main" />
         <Button type="submit" disabled={pending} className="self-start">

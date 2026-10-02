@@ -4,7 +4,7 @@ import { PAYMENT_ERROR_MESSAGE } from "@/lib/copy/payments";
 import { systemClock } from "@/server/clock";
 import { getDb } from "@/server/db/client";
 import { PROOF_MAX_BYTES } from "@/server/domain/payments/proof-file";
-import { isSameOriginRequest } from "@/server/security/request";
+import { declaredContentLength, isSameOriginRequest } from "@/server/security/request";
 import { readTrackingCookie } from "@/server/security/tracking-cookie";
 import { uploadPaymentProof } from "@/server/services/payments";
 import { resolveTrackingSession } from "@/server/services/tracking";
@@ -13,13 +13,13 @@ import { getStorage } from "@/server/storage";
 /** Customer transfer-proof upload; requires a verified tracking session (§6.1, §17). */
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request.headers)) return NextResponse.json({ ok: false, message: PAYMENT_ERROR_MESSAGE.NOT_FOUND }, { status: 403 });
+  // A length is required so an unbounded (chunked) body is never buffered.
+  const declared = declaredContentLength(request.headers);
+  if (declared === null) return NextResponse.json({ ok: false, message: PAYMENT_ERROR_MESSAGE.EMPTY }, { status: 411 });
+  if (declared > PROOF_MAX_BYTES + 64 * 1024) return NextResponse.json({ ok: false, message: PAYMENT_ERROR_MESSAGE.TOO_LARGE }, { status: 413 });
   const db = getDb();
   const orderId = await resolveTrackingSession(db, await readTrackingCookie());
   if (!orderId) return NextResponse.json({ ok: false, message: "Sesi lacak pesanan berakhir. Masukkan kembali nomor pesanan dan kode akses." }, { status: 401 });
-
-  // Reject oversized bodies before reading them (FD-50: checked before and after upload).
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > PROOF_MAX_BYTES + 64 * 1024) return NextResponse.json({ ok: false, message: PAYMENT_ERROR_MESSAGE.TOO_LARGE }, { status: 413 });
 
   let file: File | null = null;
   try {

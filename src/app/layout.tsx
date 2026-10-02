@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import "./globals.css";
@@ -18,7 +19,9 @@ export const viewport: Viewport = {
   themeColor: "#F8EDE1",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+/** Rendered per request so the CSP nonce (src/proxy.ts) can be applied to every page. */
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  await headers();
   return (
     <html lang="id">
       <body className="min-h-dvh antialiased">{children}</body>

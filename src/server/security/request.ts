@@ -21,3 +21,13 @@ export function isSameOriginRequest(requestHeaders: Headers): boolean {
     return false;
   }
 }
+
+/**
+ * Declared request body size, or null when the client sent no valid Content-Length.
+ * Route handlers use it to refuse oversized bodies before reading them.
+ */
+export function declaredContentLength(requestHeaders: Headers): number | null {
+  const raw = requestHeaders.get("content-length");
+  if (raw === null || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}

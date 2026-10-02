@@ -39,6 +39,7 @@ export default defineConfig({
       APP_URL: baseURL,
       AUTH_SECRET: "e2e-only-secret-not-for-production-0123456789",
       PAYMENT_PROVIDER: "mock",
+      ALLOW_MOCK_PAYMENTS: "true",
       MOCK_PAYMENT_WEBHOOK_SECRET: "e2e-only-mock-webhook-secret",
       CRON_SECRET: "e2e-only-cron-secret-0123456789",
       STORAGE_DRIVER: "local",

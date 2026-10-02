@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
@@ -237,19 +237,35 @@ export async function completeRefund(db: Database, args: { refundId: string; adm
   });
 }
 
-/** Received minus already-recorded refunds, for one transaction or the whole order. */
+/**
+ * Received minus already-recorded refunds. Exception money (§23) and counted order
+ * money are kept apart so the same Rupiah can never be refunded twice: a refund for
+ * an exception transaction is limited to that transaction; an order-level refund
+ * is limited to counted (non-exception) payments minus refunds not tied to an
+ * exception transaction.
+ */
 async function refundableAmount(tx: Executor, orderId: string, transactionId: string | null): Promise<number | null> {
   const paid = await tx
-    .select({ id: paymentTransactions.id, amount: paymentTransactions.amount })
+    .select({ id: paymentTransactions.id, amount: paymentTransactions.amount, isException: paymentTransactions.isException })
     .from(paymentTransactions)
-    .where(and(eq(paymentTransactions.orderId, orderId), eq(paymentTransactions.status, "PAID"), transactionId ? eq(paymentTransactions.id, transactionId) : undefined));
-  if (transactionId && paid.length === 0) return null;
-  const received = paid.reduce((s, p) => s + p.amount, 0);
-  const [{ refunded }] = (await tx
-    .select({ refunded: sql<number>`coalesce(sum(${refunds.amount}), 0)::int` })
+    .where(and(eq(paymentTransactions.orderId, orderId), eq(paymentTransactions.status, "PAID")));
+  const existing = await tx
+    .select({ amount: refunds.amount, transactionId: refunds.paymentTransactionId })
     .from(refunds)
-    .where(and(eq(refunds.orderId, orderId), transactionId ? eq(refunds.paymentTransactionId, transactionId) : undefined))) as [{ refunded: number }];
-  return received - refunded;
+    .where(eq(refunds.orderId, orderId));
+  const exceptionIds = new Set(paid.filter((p) => p.isException).map((p) => p.id));
+
+  const counted = paid.filter((p) => !p.isException).reduce((s, p) => s + p.amount, 0);
+  const refundedCounted = existing.filter((r) => !r.transactionId || !exceptionIds.has(r.transactionId)).reduce((s, r) => s + r.amount, 0);
+  const orderLevel = counted - refundedCounted;
+  if (!transactionId) return orderLevel;
+
+  const target = paid.find((p) => p.id === transactionId);
+  if (!target) return null;
+  const refundedTarget = existing.filter((r) => r.transactionId === transactionId).reduce((s, r) => s + r.amount, 0);
+  const perTransaction = target.amount - refundedTarget;
+  // A counted transaction is also bounded by what is still refundable on the order.
+  return target.isException ? perTransaction : Math.min(perTransaction, orderLevel);
 }
 
 /**

@@ -108,7 +108,7 @@ export function ProductForm({
         <fieldset className="flex flex-col gap-4 rounded-card bg-surface p-5">
           <legend className="float-left mb-2 w-full font-heading text-xl">Foto Utama</legend>
           <div className="clear-both flex flex-col gap-4">
-            <FileField label="Foto utama" name="mainImage" accept="image/jpeg,image/png,image/webp" required error={errors.mainImage} hint="JPG, PNG, atau WebP, maksimal 8 MB. Foto tambahan dapat diunggah setelah produk disimpan." />
+            <FileField label="Foto utama" name="mainImage" accept="image/jpeg,image/png,image/webp" required error={errors.mainImage} hint="JPG, PNG, atau WebP, maksimal 5 MB. Foto tambahan dapat diunggah setelah produk disimpan." />
             <TextField label="Teks alternatif foto" name="mainImageAlt" defaultValue={state.values?.mainImageAlt ?? ""} required error={errors.mainImageAlt} hint="Deskripsi singkat isi foto untuk pembaca layar." />
           </div>
         </fieldset>

@@ -1,9 +1,16 @@
 # Enjua Cake's — Final Requirement Decisions
 
-**Document Version:** 1.0  
+**Document Version:** 1.1  
 **Tanggal:** 2 Oktober 2026  
-**Status:** Final — hasil architecture review (user + technical architect)  
-**Related documents:** `PRD.md` (v1.1), `PRD-Design.md` (v1.1), `design-reference/homepage-reference.jpeg`
+**Status:** Final — hasil architecture review (user + technical architect); OC-01 s.d. OC-12 **RESOLVED**  
+**Related documents:** `PRD.md` (v1.2), `PRD-Design.md` (v1.2), `design-reference/homepage-reference.jpeg`
+
+### Riwayat Versi
+
+| Versi | Perubahan |
+|---|---|
+| 1.0 | Keputusan final FD-01 s.d. FD-105, interpretasi turunan DI-01 s.d. DI-06, Open Clarifications OC-01 s.d. OC-12. |
+| 1.1 | OC-01 s.d. OC-12 diselesaikan oleh user (§19). Keputusan resolusi dicatat sebagai FD-106 s.d. FD-117 (§19a). DI-01 s.d. DI-06 dikonfirmasi final; DI-03 diamandemen oleh FD-108. State transition order status didefinisikan (§19b). Konsekuensi turunan baru DI-07 s.d. DI-09 dan dua item lanjutan OC-13, OC-14 (§19c). |
 
 ---
 
@@ -18,13 +25,13 @@ Dokumen ini adalah **resolution record** untuk seluruh requirement yang sebelumn
 3. **`PRD-Design.md`** — sumber design/UI/UX requirements.
 4. **`design-reference/homepage-reference.jpeg`** — inspirasi visual saja, tidak boleh disalin literal.
 
-`PRD.md` dan `PRD-Design.md` versi 1.1 sudah diselaraskan dengan dokumen ini. Jika di kemudian hari ditemukan perbedaan, dokumen ini yang berlaku sampai dokumen lain diperbaiki.
+`PRD.md` dan `PRD-Design.md` versi 1.2 sudah diselaraskan dengan dokumen ini. Jika di kemudian hari ditemukan perbedaan, dokumen ini yang berlaku sampai dokumen lain diperbaiki.
 
 ## 0.2 Konvensi
 
 - **FD-xx** = Final Decision (keputusan yang sudah dikunci).
 - **DI-xx** = Derived Interpretation — konsekuensi logis langsung dari FD yang perlu ditulis eksplisit agar implementasi konsisten. Bukan keputusan bisnis baru; ditandai agar dapat dikoreksi bila tidak sesuai maksud.
-- **OC-xx** = Open Clarification — masih perlu jawaban, tetapi **bukan blocker** untuk Technical Implementation Plan.
+- **OC-xx** = Open Clarification — pertanyaan yang belum diputuskan pada saat ditemukan, **bukan blocker** untuk Technical Implementation Plan. Status setiap OC dicatat sebagai **OPEN** atau **RESOLVED**; pertanyaan aslinya tidak dihapus (decision history).
 - **GL-xx** = Data klien yang wajib tersedia sebelum **go-live** (bukan blocker untuk planning maupun development).
 - Nilai enum internal (mis. `READY_STOCK`, `WAITING_PAYMENT`) adalah identifier konseptual. Nama teknis final ditentukan pada technical planning, maknanya tidak boleh berubah.
 
@@ -59,8 +66,8 @@ Dokumen ini adalah **resolution record** untuk seluruh requirement yang sebelumn
 
 **Derived interpretations:**
 
-- **DI-01** — Expiry pada FD-14 hanya berlaku untuk order yang **belum memiliki pembayaran terkonfirmasi**. Order yang DP-nya sudah terbayar (`PARTIALLY_PAID`) tidak dibatalkan otomatis apabila transaksi pelunasannya kedaluwarsa; hanya transaksi pelunasan tersebut yang `EXPIRED`.
-- **DI-02** — Untuk Transfer Bank, timer expiry berlaku sampai bukti pembayaran diunggah ("waiting for transfer/proof"). Setelah bukti diunggah (`WAITING_VERIFICATION`), order tidak dibatalkan otomatis selama menunggu verifikasi admin.
+- **DI-01** *(dikonfirmasi final — FD-114)* — Expiry pada FD-14 hanya berlaku untuk order yang **belum memiliki pembayaran terkonfirmasi**. Order yang DP-nya sudah terbayar (`PARTIALLY_PAID`) tidak dibatalkan otomatis apabila transaksi pelunasannya kedaluwarsa; hanya transaksi pelunasan tersebut yang `EXPIRED`.
+- **DI-02** *(dikonfirmasi final — FD-114; lihat juga FD-106 dan DI-07 untuk kasus bukti ditolak)* — Untuk Transfer Bank, timer expiry berlaku sampai bukti pembayaran diunggah ("waiting for transfer/proof"). Setelah bukti diunggah (`WAITING_VERIFICATION`), order tidak dibatalkan otomatis selama menunggu verifikasi admin.
 
 ---
 
@@ -71,13 +78,13 @@ Dokumen ini adalah **resolution record** untuk seluruh requirement yang sebelumn
 | FD-16 | Setiap produk Pre-Order memiliki `minimum_preorder_days`. |
 | FD-17 | Hari dihitung sebagai **hari kalender WIB**. |
 | FD-18 | Cart dengan beberapa produk Pre-Order memakai `minimum_preorder_days` **terlama**. |
-| FD-19 | Ready Stock **boleh same-day pickup** jika kapasitas tersedia, tanggal terbuka, dan order dibuat **sebelum pickup cutoff**. |
+| FD-19 | Ready Stock **boleh same-day pickup** jika kapasitas tersedia, tanggal terbuka, dan order dibuat **sebelum pickup cutoff**. *(Lihat FD-108: cutoff juga berlaku untuk Pre-Order.)* |
 | FD-20 | **Pickup cutoff** dapat dikonfigurasi; default development **15:00 WIB**. |
 | FD-21 | Jika cutoff sudah lewat, tanggal pickup paling awal untuk Ready Stock adalah **tanggal tersedia berikutnya**. |
 
 **Derived interpretation:**
 
-- **DI-03** — Tanggal pickup paling awal untuk order yang berisi Pre-Order = tanggal order (WIB) + `minimum_preorder_days` terlama (hari kalender). Contoh: order 2 Okt, minimum 3 hari → pickup paling awal 5 Okt.
+- **DI-03** *(dikonfirmasi final — FD-114, **diamandemen oleh FD-108**)* — Versi awal: tanggal pickup paling awal untuk order yang berisi Pre-Order = tanggal order (WIB) + `minimum_preorder_days` terlama (hari kalender). **Versi berlaku setelah FD-108:** yang dipakai adalah **tanggal order efektif** (tanggal order bila sebelum pickup cutoff; hari kalender berikutnya bila pada/sesudah cutoff) + `minimum_preorder_days` terlama. Contoh (cutoff 15:00, minimum 3 hari): order 2 Okt 14:00 → paling awal 5 Okt; order 2 Okt 16:00 → paling awal 6 Okt.
 
 ---
 
@@ -116,8 +123,8 @@ Dokumen ini adalah **resolution record** untuk seluruh requirement yang sebelumn
 | ID | Keputusan |
 |---|---|
 | FD-36 | Metode pembayaran V1: **QRIS**, **Transfer Bank**, **Cash saat Pickup**. |
-| FD-37 | **QRIS:** target production adalah QRIS dinamis melalui payment gateway; wajib webhook yang diverifikasi backend; wajib mendukung sandbox; pemrosesan webhook wajib **idempotent**. |
-| FD-38 | **Transfer Bank:** customer menerima instruksi rekening, mengunggah bukti pembayaran, admin memverifikasi bukti. |
+| FD-37 | **QRIS:** target production adalah QRIS dinamis melalui payment gateway; wajib webhook yang diverifikasi backend; wajib mendukung sandbox; pemrosesan webhook wajib **idempotent**. *(Konfirmasi QRIS hanya via webhook: FD-111; retry setelah gagal: FD-112; webhook terlambat: FD-107.)* |
+| FD-38 | **Transfer Bank:** customer menerima instruksi rekening, mengunggah bukti pembayaran, admin memverifikasi bukti. *(Penolakan bukti: FD-106.)* |
 | FD-39 | **Cash:** hanya pembayaran penuh, **tanpa DP**. Admin menandai pembayaran `PAID` saat pickup. |
 
 ## 6.2 Pembatasan Pre-Order
@@ -135,7 +142,7 @@ Dokumen ini adalah **resolution record** untuk seluruh requirement yang sebelumn
 | FD-43 | Nilai mata uang disimpan sebagai **integer Rupiah**. |
 | FD-44 | **DP = ceil(total × 0,5)**. **Sisa = total − DP**. Contoh: total Rp125.555 → DP Rp62.778, sisa Rp62.777. |
 | FD-45 | Customer dapat melihat total, jumlah sudah dibayar, dan sisa pembayaran. |
-| FD-46 | Sisa pembayaran dapat dibayar melalui flow online/transfer yang didukung dari halaman tracking/payment. |
+| FD-46 | Sisa pembayaran dapat dibayar melalui flow online/transfer yang didukung dari halaman tracking/payment. *(Pelunasan wajib sebelum Selesai, hanya QRIS/Transfer: FD-109.)* |
 
 ## 6.4 Biaya & Provider
 
@@ -181,7 +188,7 @@ Pemetaan label (label indikatif, wording final boleh disesuaikan selama makna sa
 
 | ID | Keputusan |
 |---|---|
-| FD-54 | Order status final: **Pesanan Baru, Dikonfirmasi, Pesanan Diproses, Siap Diambil, Selesai, Dibatalkan**. |
+| FD-54 | Order status final: **Pesanan Baru, Dikonfirmasi, Pesanan Diproses, Siap Diambil, Selesai, Dibatalkan**. *(State transition: FD-116, §19b.)* |
 | FD-55 | **Tidak** memakai status "Pesanan Diterima" (konflik dengan "Pesanan Baru"). |
 
 ## 8.1 Flow per Metode Pembayaran
@@ -223,7 +230,7 @@ Pesanan Baru (payment UNPAID, slot reserved tanpa expiry)
 
 **Derived interpretation:**
 
-- **DI-04** — Pada flow QRIS tidak ada langkah admin sebelum "Dikonfirmasi" (berbeda dengan Cash yang eksplisit "admin accepts"). Karena itu, perubahan ke **Dikonfirmasi** setelah webhook sukses terverifikasi dibaca sebagai **otomatis oleh System** dan dicatat di audit trail sebagai "oleh System". Pada Transfer Bank, persetujuan bukti oleh admin memicu Dikonfirmasi.
+- **DI-04** *(dikonfirmasi final — FD-114; diperkuat FD-111)* — Pada flow QRIS tidak ada langkah admin sebelum "Dikonfirmasi" (berbeda dengan Cash yang eksplisit "admin accepts"). Karena itu, perubahan ke **Dikonfirmasi** setelah webhook sukses terverifikasi dibaca sebagai **otomatis oleh System** dan dicatat di audit trail sebagai "oleh System". Pada Transfer Bank, persetujuan bukti oleh admin memicu Dikonfirmasi.
 
 ## 8.2 Order Expiry
 
@@ -272,7 +279,7 @@ Pesanan Baru (payment UNPAID, slot reserved tanpa expiry)
 
 **Derived interpretation:**
 
-- **DI-05** — Jika token disimpan sebagai hash (FD-68), sistem tidak dapat menampilkan ulang token lama. Konsekuensinya, pemulihan oleh admin (FD-72) dilakukan dengan **menerbitkan ulang (regenerate) kode akses** untuk order tersebut, lalu admin menyampaikannya secara manual via WhatsApp setelah memverifikasi customer. Token lama otomatis tidak berlaku.
+- **DI-05** *(dikonfirmasi final — FD-114)* — Jika token disimpan sebagai hash (FD-68), sistem tidak dapat menampilkan ulang token lama. Konsekuensinya, pemulihan oleh admin (FD-72) dilakukan dengan **menerbitkan ulang (regenerate) kode akses** untuk order tersebut, lalu admin menyampaikannya secara manual via WhatsApp setelah memverifikasi customer. Token lama otomatis tidak berlaku.
 
 ---
 
@@ -293,7 +300,7 @@ Pesanan Baru (payment UNPAID, slot reserved tanpa expiry)
 |---|---|
 | FD-78 | **Manual Order adalah bagian V1.** |
 | FD-79 | Admin dapat mencatat order yang masuk dari WhatsApp/offline. |
-| FD-80 | Manual order **wajib memakai kapasitas tanggal pickup yang sama**, agar kapasitas nyata tetap akurat. |
+| FD-80 | Manual order **wajib memakai kapasitas tanggal pickup yang sama**, agar kapasitas nyata tetap akurat. *(Validasi & override: FD-110; tracking token: FD-115.)* |
 
 ---
 
@@ -319,7 +326,7 @@ Pesanan Baru (payment UNPAID, slot reserved tanpa expiry)
 
 **Derived interpretation:**
 
-- **DI-06** — Durasi expiry reservasi QRIS (FD-12) dan Transfer (FD-13) juga "dapat dikonfigurasi". Apakah konfigurasi tersebut tampil di Website Settings admin atau cukup sebagai konfigurasi sistem/environment ditentukan di technical planning.
+- **DI-06** *(dikonfirmasi final — FD-114)* — Durasi expiry reservasi QRIS (FD-12) dan Transfer (FD-13) juga "dapat dikonfigurasi". Apakah konfigurasi tersebut tampil di Website Settings admin atau cukup sebagai konfigurasi sistem/environment ditentukan di technical planning.
 
 ---
 
@@ -336,7 +343,7 @@ Pesanan Baru (payment UNPAID, slot reserved tanpa expiry)
 
 | ID | Keputusan |
 |---|---|
-| FD-91 | Bahasa utama UI customer dan admin: **Bahasa Indonesia**. Nama brand tetap **Enjua Cake's**. Jangan mencampur label fungsional Bahasa Inggris kecuali disetujui. |
+| FD-91 | Bahasa utama UI customer dan admin: **Bahasa Indonesia**. Nama brand tetap **Enjua Cake's**. Jangan mencampur label fungsional Bahasa Inggris kecuali disetujui. *(Pengecualian badge Ready Stock / Pre-Order / Sold Out: FD-117.)* |
 | FD-92 | Navigasi desktop: **Beranda, Produk, Cara Pesan, Tentang Kami, Lacak Pesanan, Kontak, Cart, Pesan Sekarang**. |
 | FD-93 | Navigasi mobile: **Logo, Cart, Hamburger/drawer**. |
 | FD-94 | **Search bukan requirement V1.** Jangan mengimplementasikan search hanya karena ikon search ada di design reference. |
@@ -414,27 +421,90 @@ Pemetaan dari laporan understanding & validation sebelumnya ke keputusan final.
 | 38 | PRD §34 "design reference belum tersedia" | Diperbaiki: tersedia di `design-reference/homepage-reference.jpeg` | PRD §34 |
 | 39 | Tipe & ukuran bukti pembayaran | JPG/PNG/PDF, 5 MB (FD-50–51) | PRD §18, §40 |
 | 40 | Penempatan link WhatsApp & isi pesan | FD-74–77 | PRD §28 |
+| 41 | OC-01 s.d. OC-12 (v1.0) | FD-106 s.d. FD-117 (v1.1) | PRD v1.2; Design v1.2 |
 
 ---
 
-# 19. Open Clarifications (Bukan Blocker untuk Technical Implementation Plan)
+# 19. Open Clarifications — Status Resolusi
 
-Item berikut ditemukan saat konsolidasi. Seluruhnya dapat ditangani sebagai konfigurasi atau default yang diusulkan di technical plan, tetapi **tidak boleh diputuskan sepihak** — perlu persetujuan saat review plan.
+Item berikut ditemukan saat konsolidasi v1.0 dan **seluruhnya telah diselesaikan oleh user** pada v1.1. Pertanyaan asli dipertahankan sebagai decision history.
 
-| ID | Pertanyaan | Mengapa relevan |
+| ID | Pertanyaan asli (v1.0) | Resolusi final (v1.1) | Status |
+|---|---|---|---|
+| OC-01 | Bila admin **menolak** bukti transfer (bukti tidak valid), payment kembali ke `WAITING_PAYMENT` (customer boleh upload ulang) atau `FAILED`? Apakah timer expiry berjalan lagi? | Payment kembali ke `WAITING_PAYMENT`; customer dapat mengunggah bukti baru; reservation expiry **tidak** di-reset/dimulai ulang. → FD-106 | **RESOLVED** |
+| OC-02 | **Pembayaran QRIS terlambat**: webhook sukses diterima setelah order sudah dibatalkan karena expiry dan slot sudah dilepas. Diperlakukan bagaimana (ditandai "perlu perhatian" untuk admin → reinstate atau refund manual)? | Tidak ada reaktivasi otomatis; payment/event ditandai **exception** untuk review admin; reinstate/refund diputuskan manual. → FD-107 | **RESOLVED** |
+| OC-03 | Apakah **pickup cutoff** juga berlaku untuk Pre-Order? Keputusan saat ini hanya menyebut cutoff untuk Ready Stock same-day. Tanpa cutoff, Pre-Order 1 hari yang dipesan pukul 23:50 dapat diambil keesokan harinya. | Ya. Cutoff berlaku juga untuk Pre-Order dan menentukan tanggal order efektif untuk perhitungan minimum hari. → FD-108 | **RESOLVED** |
+| OC-04 | **Sisa DP**: apakah ada batas waktu pelunasan (mis. sebelum Siap Diambil / sebelum tanggal pickup)? Apakah order boleh **Selesai** jika belum `PAID`? Apakah admin boleh mencatat pelunasan sisa secara **cash saat pickup** untuk order DP? | Order DP wajib lunas sebelum **Selesai**. Pelunasan hanya via QRIS atau Transfer Bank; Cash tidak dipakai untuk pelunasan. → FD-109 | **RESOLVED** |
+| OC-05 | **Manual Order**: apakah tunduk pada validasi yang sama dengan checkout customer (blokir tanggal, kapasitas penuh, minimum Pre-Order, cutoff, larangan Cash untuk Pre-Order), atau admin boleh override? Jika override diizinkan, apakah wajib alasan di audit trail? | Validasi bisnis sama dengan order website; override terbatas diizinkan bila perlu; setiap override wajib alasan + audit log. → FD-110 | **RESOLVED** |
+| OC-06 | Apakah admin dapat mengonfirmasi order QRIS secara manual **sebelum** webhook diterima (mis. saat gateway bermasalah), atau verifikasi QRIS selalu otomatis? Konfirmasi juga DI-04 (Dikonfirmasi otomatis oleh System setelah webhook sukses). | QRIS hanya dikonfirmasi melalui verified gateway webhook; tidak ada konfirmasi QRIS manual oleh admin di V1. → FD-111 | **RESOLVED** |
+| OC-07 | Setelah pembayaran QRIS **gagal** (`FAILED`) di dalam masa reservasi, apakah customer boleh membuat transaksi QRIS baru untuk order yang sama sampai expiry? | Ya, selama reservasi order masih valid; hanya transaksi valid/sukses yang dihitung sebagai pembayaran. → FD-112 | **RESOLVED** |
+| OC-08 | **No-show order Cash**: tidak ada expiry otomatis. Konfirmasi bahwa pembatalan no-show dilakukan manual oleh admin (tanpa aturan otomatis). | Dikonfirmasi: Cash no-show tidak expired otomatis; admin membatalkan manual bila perlu. → FD-113 | **RESOLVED** |
+| OC-09 | Konfirmasi DI-01 s.d. DI-06 bila maksudnya berbeda. | DI-01 s.d. DI-06 dikonfirmasi final (DI-03 diamandemen oleh FD-108). → FD-114 | **RESOLVED** |
+| OC-10 | Apakah **Manual Order** juga diterbitkan kode akses tracking (agar customer WhatsApp/offline dapat melacak pesanannya)? Direkomendasikan ya. | Ya. Manual Order juga mendapat tracking access code/token dengan mekanisme tracking yang sama. → FD-115 | **RESOLVED** |
+| OC-11 | Dari status mana saja admin boleh membatalkan order (mis. apakah order **Siap Diambil** masih boleh dibatalkan)? Apakah transisi status boleh mundur/lompat? | Order status mengikuti state transition yang didefinisikan; Selesai tidak dapat menjadi Dibatalkan; tidak ada transisi mundur/lompat bebas; pembatalan mengikuti aturan pembatalan. → FD-116, §19b | **RESOLVED** |
+| OC-12 | Wording badge: tetap "Ready Stock / Pre-Order / Sold Out" (istilah yang dipakai PRD dan lazim di e-commerce Indonesia) atau diterjemahkan (mis. "Habis" untuk Sold Out)? Terkait FD-91 (tidak mencampur label Inggris tanpa persetujuan). | Badge tetap **Ready Stock**, **Pre-Order**, **Sold Out** (tidak diterjemahkan). → FD-117 | **RESOLVED** |
+
+---
+
+# 19a. Keputusan Final dari Resolusi OC
+
+| ID | Sumber | Keputusan |
 |---|---|---|
-| OC-01 | Bila admin **menolak** bukti transfer (bukti tidak valid), payment kembali ke `WAITING_PAYMENT` (customer boleh upload ulang) atau `FAILED`? Apakah timer expiry berjalan lagi? | Flow Transfer hanya mendefinisikan jalur "admin menyetujui". |
-| OC-02 | **Pembayaran QRIS terlambat**: webhook sukses diterima setelah order sudah dibatalkan karena expiry dan slot sudah dilepas. Diperlakukan bagaimana (ditandai "perlu perhatian" untuk admin → reinstate atau refund manual)? | Kasus nyata pada QRIS; uang sudah masuk tetapi order batal. |
-| OC-03 | Apakah **pickup cutoff** juga berlaku untuk Pre-Order? Keputusan saat ini hanya menyebut cutoff untuk Ready Stock same-day. Tanpa cutoff, Pre-Order 1 hari yang dipesan pukul 23:50 dapat diambil keesokan harinya. | Beban produksi. |
-| OC-04 | **Sisa DP**: apakah ada batas waktu pelunasan (mis. sebelum Siap Diambil / sebelum tanggal pickup)? Apakah order boleh **Selesai** jika belum `PAID`? Apakah admin boleh mencatat pelunasan sisa secara **cash saat pickup** untuk order DP? | FD-46 menyediakan jalur online/transfer, tetapi tidak mengatur tenggat dan jalur offline. |
-| OC-05 | **Manual Order**: apakah tunduk pada validasi yang sama dengan checkout customer (blokir tanggal, kapasitas penuh, minimum Pre-Order, cutoff, larangan Cash untuk Pre-Order), atau admin boleh override? Jika override diizinkan, apakah wajib alasan di audit trail? | FD-80 hanya mewajibkan konsumsi kapasitas. |
-| OC-06 | Apakah admin dapat mengonfirmasi order QRIS secara manual **sebelum** webhook diterima (mis. saat gateway bermasalah), atau verifikasi QRIS selalu otomatis? Konfirmasi juga DI-04 (Dikonfirmasi otomatis oleh System setelah webhook sukses). | Menentukan siapa aktor transisi status. |
-| OC-07 | Setelah pembayaran QRIS **gagal** (`FAILED`) di dalam masa reservasi, apakah customer boleh membuat transaksi QRIS baru untuk order yang sama sampai expiry? | Pengalaman customer & penanganan transaksi ganda. |
-| OC-08 | **No-show order Cash**: tidak ada expiry otomatis. Konfirmasi bahwa pembatalan no-show dilakukan manual oleh admin (tanpa aturan otomatis). | Slot Cash bisa tertahan. |
-| OC-09 | Konfirmasi DI-01 s.d. DI-06 bila maksudnya berbeda. | Interpretasi turunan. |
-| OC-10 | Apakah **Manual Order** juga diterbitkan kode akses tracking (agar customer WhatsApp/offline dapat melacak pesanannya)? Direkomendasikan ya. | Menentukan apakah tracking berlaku untuk semua order. |
-| OC-11 | Dari status mana saja admin boleh membatalkan order (mis. apakah order **Siap Diambil** masih boleh dibatalkan)? Apakah transisi status boleh mundur/lompat? | Aturan transisi status di state machine. |
-| OC-12 | Wording badge: tetap "Ready Stock / Pre-Order / Sold Out" (istilah yang dipakai PRD dan lazim di e-commerce Indonesia) atau diterjemahkan (mis. "Habis" untuk Sold Out)? Terkait FD-91 (tidak mencampur label Inggris tanpa persetujuan). | Copy UI; tidak memengaruhi arsitektur. |
+| FD-106 | OC-01 | Jika admin **menolak** bukti transfer bank, status transaksi pembayaran kembali ke `WAITING_PAYMENT` sehingga customer dapat mengunggah bukti baru. Timer/reservation expiry **tidak** di-reset atau dimulai ulang. Penolakan dicatat di audit trail. |
+| FD-107 | OC-02 | Jika webhook QRIS yang **valid** masuk setelah order sudah expired/Dibatalkan dan slot sudah dilepas, sistem **tidak** otomatis mengaktifkan kembali order. Payment/event tersebut ditandai sebagai **exception** untuk review admin. Keputusan reinstate atau refund dilakukan **manual** sesuai kondisi. |
+| FD-108 | OC-03 | **Pickup cutoff juga berlaku untuk Pre-Order.** Cutoff menentukan **tanggal order efektif** untuk perhitungan minimum Pre-Order: order sebelum cutoff → tanggal efektif = tanggal order; order pada/sesudah cutoff → tanggal efektif = hari kalender berikutnya (WIB). Tanggal pickup paling awal = tanggal efektif + `minimum_preorder_days` terlama (Pre-Order) atau = tanggal efektif (Ready Stock-only). Tanggal tetap harus lolos aturan lain (kapasitas, blokir, booking horizon). |
+| FD-109 | OC-04 | Order dengan **DP 50%** wajib **lunas (`PAID`)** sebelum dapat berstatus **Selesai**. Pelunasan sisa hanya melalui **QRIS** atau **Transfer Bank**. **Cash tidak digunakan** sebagai metode pelunasan sisa DP. |
+| FD-110 | OC-05 | **Manual Order** mengikuti validasi bisnis yang sama dengan order website. Admin dapat melakukan **override terbatas** bila memang diperlukan. Setiap override **wajib** mencatat alasan dan audit log. |
+| FD-111 | OC-06 | Pembayaran QRIS **hanya** dapat dikonfirmasi melalui **verified payment gateway webhook**. **Tidak ada** konfirmasi QRIS manual oleh admin di V1. |
+| FD-112 | OC-07 | Jika transaksi QRIS **gagal** tetapi reservasi order masih valid dan belum expired, customer dapat membuat **transaksi QRIS baru** pada order yang sama. Hanya transaksi pembayaran yang valid/sukses yang dihitung sebagai pembayaran. |
+| FD-113 | OC-08 | Order Cash yang tidak diambil (no-show) **tidak** otomatis expired karena payment. Admin melakukan pembatalan secara manual bila diperlukan. |
+| FD-114 | OC-09 | DI-01 s.d. DI-06 dikonfirmasi sebagai **keputusan final**. DI-03 berlaku dalam bentuk yang diamandemen oleh FD-108. |
+| FD-115 | OC-10 | **Manual Order** juga mendapatkan **tracking access code/token** dan memakai mekanisme tracking order yang sama. |
+| FD-116 | OC-11 | Order status **wajib** mengikuti state transition yang didefinisikan (§19b). Status **Selesai tidak dapat** diubah menjadi Dibatalkan. Tidak boleh ada perubahan status **mundur** atau **lompat** secara bebas di luar transition yang didefinisikan. Pembatalan mengikuti aturan pembatalan yang sudah ditetapkan (FD-56–FD-60). |
+| FD-117 | OC-12 | Badge produk tetap menggunakan istilah **Ready Stock**, **Pre-Order**, dan **Sold Out**, **tidak** diterjemahkan ke Bahasa Indonesia. Ini adalah pengecualian yang disetujui terhadap FD-91. |
+
+---
+
+# 19b. Order Status State Transition
+
+Disusun dari FD-54, flow per metode (§8.1), FD-56–FD-60, FD-109, FD-111, dan FD-116. Transition di luar tabel ini **tidak diizinkan**.
+
+| Dari | Ke | Aktor | Syarat |
+|---|---|---|---|
+| Pesanan Baru | Dikonfirmasi | System | **QRIS:** webhook sukses terverifikasi; payment `PARTIALLY_PAID` atau `PAID` (FD-111, DI-04). |
+| Pesanan Baru | Dikonfirmasi | Admin | **Transfer Bank:** admin menyetujui bukti pembayaran; payment `PARTIALLY_PAID` atau `PAID`. |
+| Pesanan Baru | Dikonfirmasi | Admin | **Cash:** admin menerima order. |
+| Pesanan Baru | Dibatalkan | System | QRIS/Transfer belum dibayar dan reservasi habis; payment `EXPIRED` (FD-56). Tidak berlaku untuk Cash (FD-57, FD-113). |
+| Pesanan Baru | Dibatalkan | Admin | Alasan wajib (FD-60). |
+| Dikonfirmasi | Pesanan Diproses | Admin | — |
+| Dikonfirmasi | Dibatalkan | Admin | Alasan wajib. |
+| Pesanan Diproses | Siap Diambil | Admin | — |
+| Pesanan Diproses | Dibatalkan | Admin | Alasan wajib. |
+| Siap Diambil | Selesai | Admin | Payment `PAID` (lihat DI-09). |
+| Siap Diambil | Dibatalkan | Admin | Alasan wajib. |
+| Selesai | — | — | **Terminal.** Tidak dapat menjadi Dibatalkan (FD-116). |
+| Dibatalkan | — | — | **Terminal** dalam tabel ini. Lihat OC-13 untuk mekanisme "reinstate" manual dari FD-107. |
+
+Setiap transition dicatat di audit trail (waktu, aktor admin/System, alasan bila ada). Pembatalan melepaskan slot kapasitas; refund bila ada dicatat manual (FD-62, FD-63).
+
+---
+
+# 19c. Konsekuensi Turunan Baru dan Item Lanjutan
+
+## Derived interpretations (v1.1)
+
+Konsekuensi literal dari kombinasi keputusan; bukan keputusan bisnis baru. Ditandai agar dapat dikoreksi bila tidak sesuai maksud.
+
+- **DI-07** — (FD-106 + DI-02) Timer berhenti selama `WAITING_VERIFICATION`. Jika bukti ditolak, transaksi kembali ke `WAITING_PAYMENT` dengan **batas waktu reservasi awal** (tidak di-reset). Jika batas waktu awal itu sudah lewat ketika bukti ditolak, order langsung memenuhi kondisi FD-56 (payment `EXPIRED`, order Dibatalkan, slot dilepas).
+- **DI-08** — (FD-112 + FD-12) Masa reservasi melekat pada **order**, bukan pada transaksi. Transaksi QRIS baru setelah kegagalan **tidak** memperpanjang masa reservasi order.
+- **DI-09** — (Flow §8.1 + FD-109) Untuk semua metode, transition **Siap Diambil → Selesai** mensyaratkan payment `PAID`: QRIS/Transfer penuh sudah `PAID` sejak dikonfirmasi; Cash ditandai `PAID` oleh admin saat pickup; DP harus dilunasi via QRIS/Transfer terlebih dahulu.
+
+## Item lanjutan (OPEN, bukan blocker untuk Technical Implementation Plan)
+
+| ID | Pertanyaan | Status |
+|---|---|---|
+| OC-13 | FD-107 mengizinkan **reinstate manual**, sedangkan FD-116 melarang transition yang tidak didefinisikan dan tidak ada transition keluar dari Dibatalkan. Bagaimana reinstate dijalankan? Opsi: (a) satu transition pengecualian **Dibatalkan → Dikonfirmasi**, hanya oleh admin, hanya untuk order dengan exception FD-107, dengan reservasi ulang kapasitas dan alasan + audit; atau (b) Dibatalkan tetap terminal dan "reinstate" dilakukan dengan membuat **Manual Order baru** yang ditautkan ke pembayaran exception. Rekomendasi: (b), karena state machine tetap ketat tanpa transition baru. | **OPEN** |
+| OC-14 | FD-110 mengizinkan **override terbatas** untuk Manual Order. Validasi mana yang boleh di-override (mis. kapasitas penuh, tanggal diblokir, minimum Pre-Order, cutoff, booking horizon, larangan Cash untuk Pre-Order) dan mana yang tidak? Rekomendasi: Technical Implementation Plan mengusulkan daftar validasi yang dapat di-override untuk disetujui. | **OPEN** |
 
 ---
 

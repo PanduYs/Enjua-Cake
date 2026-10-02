@@ -1,8 +1,10 @@
 # Enjua Cake's — PRD Design Specification
 
-**Version:** 1.1  
-**Status:** Consolidated — selaras dengan `FINAL-REQUIREMENT-DECISIONS.md`  
-**Related documents:** `PRD.md` (v1.1), `FINAL-REQUIREMENT-DECISIONS.md`  
+**Version:** 1.2  
+**Status:** Consolidated — selaras dengan `FINAL-REQUIREMENT-DECISIONS.md` v1.1 (OC-01 s.d. OC-12 resolved)  
+**Related documents:** `PRD.md` (v1.2), `FINAL-REQUIREMENT-DECISIONS.md` (v1.1)  
+
+**Riwayat:** v1.1 — penyelarasan dengan keputusan final. v1.2 — penerapan resolusi OC-01 s.d. OC-12 (FD-106 s.d. FD-117) pada UI checkout, payment, tracking, dan admin.
 **Primary visual reference:** `design-reference/homepage-reference.jpeg`
 
 ---
@@ -100,7 +102,8 @@ Bahasa utama UI customer dan admin adalah **Bahasa Indonesia** (FD-91).
 * Nama brand tetap **Enjua Cake's**.
 * Label fungsional (navigasi, tombol, status, form, pesan error) ditulis dalam Bahasa Indonesia.
 * Jangan mencampur label fungsional berbahasa Inggris kecuali disetujui.
-* Istilah bisnis yang sudah dipakai PRD (mis. Ready Stock, Pre-Order, DP, QRIS) boleh dipertahankan; wording final badge dikonfirmasi (lihat OC-12 di `FINAL-REQUIREMENT-DECISIONS.md`).
+* Istilah bisnis yang sudah dipakai PRD (mis. DP, QRIS) boleh dipertahankan.
+* **Badge produk tetap menggunakan istilah "Ready Stock", "Pre-Order", dan "Sold Out"** dan **tidak** diterjemahkan (FD-117). Ini adalah pengecualian yang disetujui terhadap aturan Bahasa Indonesia.
 * Seluruh contoh copy di dokumen ini adalah placeholder; copy final mengikuti persetujuan klien.
 
 ---
@@ -444,7 +447,7 @@ Jika produk memiliki informasi tambahan yang penting (mis. minimum Pre-Order), t
 Sold Out adalah status availability manual dari admin (FD-26, FD-27):
 
 * produk **tetap terlihat** di listing
-* CTA tambah ke keranjang **dinonaktifkan** dan diberi label jelas (mis. "Sedang Habis")
+* CTA tambah ke keranjang **dinonaktifkan** dan diberi label jelas yang memakai istilah **Sold Out** (FD-117)
 * status tidak hanya dibedakan lewat warna; gunakan label teks
 
 Produk nonaktif (`active = false`) tidak ditampilkan sama sekali.
@@ -513,6 +516,8 @@ Badge dengan warna neutral/darker. Merupakan status **manual dari admin**, bukan
 Badge tidak boleh terlalu besar sehingga mendominasi foto produk.
 
 Badge harus memiliki label teks, tidak hanya warna.
+
+Label badge **wajib** persis: **Ready Stock**, **Pre-Order**, **Sold Out** — tidak diterjemahkan (FD-117).
 
 ---
 
@@ -588,6 +593,7 @@ Calendar/date picker:
   * "Belum memenuhi minimum Pre-Order"
   * "Batas pemesanan hari ini sudah lewat"
 * alasan tidak boleh hanya disampaikan lewat warna atau hover; harus dapat diakses via sentuhan dan keyboard
+* tampilkan informasi pickup cutoff yang jelas, karena cutoff berlaku untuk Ready Stock **dan** Pre-Order (FD-108). Contoh copy (placeholder): "Pesanan setelah pukul 15:00 WIB dihitung sebagai pesanan hari berikutnya."
 
 ### Ringkasan Pesanan
 
@@ -648,7 +654,8 @@ Sisa Pembayaran     Rp150.000
 
 * tampilkan QR dan nominal
 * tampilkan batas waktu pembayaran (default 30 menit) beserta hitung mundur
-* status otomatis diperbarui setelah pembayaran terverifikasi
+* status otomatis diperbarui setelah pembayaran terverifikasi melalui webhook; tidak ada konfirmasi manual (FD-111)
+* jika transaksi QRIS gagal dan batas waktu reservasi belum habis, tampilkan aksi untuk **membuat QRIS baru** pada order yang sama (FD-112); hitung mundur tetap mengikuti batas waktu reservasi order dan tidak dimulai ulang (DI-08)
 
 ### Transfer Bank
 
@@ -656,6 +663,7 @@ Sisa Pembayaran     Rp150.000
 * tampilkan batas waktu (default 2 jam)
 * area upload bukti: JPG/JPEG, PNG, atau PDF, maksimal 5 MB, dengan pesan error yang jelas bila tidak sesuai
 * setelah upload: status `Menunggu Verifikasi`
+* jika bukti **ditolak** admin: tampilkan status kembali `Menunggu Pembayaran`, alasan penolakan yang aman ditampilkan, dan aksi untuk mengunggah bukti baru; batas waktu yang ditampilkan tetap batas waktu reservasi awal, tidak di-reset (FD-106, DI-07)
 
 ### Cash saat Pickup
 
@@ -683,9 +691,20 @@ Jika kedaluwarsa:
 
 `Batas waktu pembayaran habis. Pesanan dibatalkan.`
 
+Jika bukti ditolak:
+
+`Bukti pembayaran belum dapat diterima. Silakan unggah bukti yang baru sebelum batas waktu.`
+
+Jika QRIS gagal:
+
+`Pembayaran QRIS gagal. Silakan buat QRIS baru sebelum batas waktu.`
+
 ### Pelunasan Sisa DP
 
-Dari halaman tracking/payment, customer dapat membayar sisa DP melalui QRIS atau transfer (FD-46).
+Dari halaman tracking/payment, customer dapat membayar sisa DP melalui **QRIS atau Transfer Bank saja** (FD-46, FD-109).
+
+* Cash **tidak** ditampilkan sebagai opsi pelunasan.
+* Tampilkan informasi yang jelas bahwa sisa pembayaran **wajib lunas sebelum pesanan dapat diselesaikan** (FD-109). Contoh copy (placeholder): "Sisa pembayaran perlu dilunasi melalui QRIS atau transfer sebelum pesanan dapat diselesaikan."
 
 ---
 
@@ -761,7 +780,7 @@ Tampilkan juga total, sudah dibayar, dan sisa.
 
 ### Aksi
 
-* bayar sisa DP / lanjutkan pembayaran pending / upload bukti transfer (sesuai kondisi)
+* bayar sisa DP (QRIS/Transfer) / lanjutkan pembayaran pending / buat QRIS baru setelah gagal / upload bukti transfer atau bukti baru setelah ditolak (sesuai kondisi)
 * bantuan WhatsApp, termasuk untuk permintaan pembatalan (customer tidak dapat membatalkan sendiri — FD-58)
 
 ### Kode akses hilang
@@ -807,6 +826,7 @@ Ringkasan operasional (FD-90), mis.:
 * kapasitas pickup mendatang
 * ringkasan pendapatan sederhana
 * order yang membutuhkan perhatian
+* **payment exception** yang perlu direview (mis. pembayaran QRIS valid setelah order expired — FD-107)
 
 Tidak ada modul BI/reporting lanjutan di V1.
 
@@ -819,8 +839,9 @@ Card/list layout pada mobile.
 Admin dapat:
 
 * membuka detail order
-* mengubah status order
-* membatalkan order dengan alasan wajib
+* mengubah status order — kontrol hanya menampilkan **transition yang diizinkan** dari status saat ini (FD-116, `PRD.md` §22.4); tidak ada pilihan mundur/lompat bebas
+* menyelesaikan order (Siap Diambil → Selesai) hanya bila payment `Lunas`; bila belum lunas, aksi dinonaktifkan dengan penjelasan (DI-09, FD-109)
+* membatalkan order dengan alasan wajib — aksi batal **tidak tersedia** untuk order Selesai (FD-116)
 * menerbitkan ulang kode akses tracking
 * membuat **Manual Order** (FD-78)
 
@@ -828,11 +849,18 @@ Admin dapat:
 
 Form untuk mencatat order dari WhatsApp/offline: data customer, produk, tanggal pickup (dengan informasi kapasitas tersisa), metode & status pembayaran. Manual order memakai kapasitas yang sama dengan order website.
 
+* Form menerapkan **validasi yang sama** dengan checkout website dan menampilkan pesan validasi yang sama (FD-110).
+* Bila admin perlu melakukan **override terbatas**, override dilakukan secara eksplisit (bukan otomatis) dan **wajib** mengisi alasan; override tercatat di audit log (FD-110). Validasi mana yang dapat di-override masih OPEN (OC-14).
+* Setelah tersimpan, tampilkan nomor order dan **kode akses tracking** (FD-115) beserta aksi copy agar admin dapat menyampaikannya ke customer secara manual.
+
 ## Payment Management
 
 * daftar bukti transfer menunggu verifikasi, dengan pratinjau file (tidak terekspos publik)
 * aksi setujui bukti
-* tandai pembayaran Cash sebagai lunas
+* aksi **tolak** bukti dengan alasan → transaksi kembali `Menunggu Pembayaran` (FD-106)
+* tandai pembayaran Cash sebagai lunas (bukan untuk pelunasan sisa DP — FD-109)
+* **tidak ada** aksi konfirmasi manual untuk QRIS (FD-111)
+* daftar **payment exception** untuk direview; keputusan reinstate/refund dilakukan manual (FD-107; mekanisme reinstate OPEN — OC-13)
 * catat refund (jumlah, status, alasan; waktu & operator tercatat otomatis)
 
 ## Pickup Capacity
@@ -1088,7 +1116,7 @@ Contoh:
 
 > Tanggal ini sudah penuh. Silakan pilih tanggal lain.
 
-> Produk "…" sedang habis dan telah dihapus dari pesananmu.
+> Produk "…" saat ini Sold Out dan telah dihapus dari pesananmu.
 
 > File harus berformat JPG, PNG, atau PDF dengan ukuran maksimal 5 MB.
 
@@ -1149,10 +1177,13 @@ Design dianggap memenuhi requirement apabila:
 * [ ] Typography memiliki hierarchy yang konsisten.
 * [ ] Color palette konsisten dan memenuhi kontras WCAG 2.1 AA.
 * [ ] Product cards konsisten.
-* [ ] Ready Stock, Pre-Order, dan Sold Out mudah dibedakan (tidak hanya lewat warna).
+* [ ] Ready Stock, Pre-Order, dan Sold Out mudah dibedakan (tidak hanya lewat warna) dan memakai istilah tersebut tanpa diterjemahkan.
 * [ ] Cart mudah digunakan dan tidak memuat pemilihan tanggal pickup.
 * [ ] Checkout mudah dipahami, termasuk alasan tanggal disabled dan alasan Cash tidak tersedia.
-* [ ] Payment information jelas (nominal, DP, sisa, batas waktu).
+* [ ] Payment information jelas (nominal, DP, sisa, batas waktu), termasuk state bukti ditolak, QRIS gagal, dan pelunasan sisa via QRIS/Transfer.
+* [ ] Informasi pickup cutoff terlihat saat memilih tanggal pickup.
+* [ ] Admin hanya dapat memilih transition status yang diizinkan; order Selesai tidak dapat dibatalkan.
+* [ ] Override Manual Order selalu meminta alasan.
 * [ ] Halaman order sukses menonjolkan nomor order dan kode akses.
 * [ ] Order tracking mudah dipahami.
 * [ ] Admin dashboard konsisten dengan brand tetapi tetap functional.

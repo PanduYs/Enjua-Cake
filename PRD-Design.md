@@ -1,10 +1,10 @@
 # Enjua Cake's — PRD Design Specification
 
-**Version:** 1.2  
-**Status:** Consolidated — selaras dengan `FINAL-REQUIREMENT-DECISIONS.md` v1.1 (OC-01 s.d. OC-12 resolved)  
-**Related documents:** `PRD.md` (v1.2), `FINAL-REQUIREMENT-DECISIONS.md` (v1.1)  
+**Version:** 1.3  
+**Status:** Consolidated — selaras dengan `FINAL-REQUIREMENT-DECISIONS.md` v1.1 (seluruh OC resolved)  
+**Related documents:** `PRD.md` (v1.3), `FINAL-REQUIREMENT-DECISIONS.md` (v1.2), `IMPLEMENTATION-PLAN.md`  
 
-**Riwayat:** v1.1 — penyelarasan dengan keputusan final. v1.2 — penerapan resolusi OC-01 s.d. OC-12 (FD-106 s.d. FD-117) pada UI checkout, payment, tracking, dan admin.
+**Riwayat:** v1.1 — penyelarasan dengan keputusan final. v1.2 — penerapan resolusi OC-01 s.d. OC-12 (FD-106 s.d. FD-117) pada UI checkout, payment, tracking, dan admin. v1.3 — FD-118 (tanpa reinstate), FD-119 (override Manual Order), FD-120 (timer tidak pernah di-reset).
 **Primary visual reference:** `design-reference/homepage-reference.jpeg`
 
 ---
@@ -663,7 +663,7 @@ Sisa Pembayaran     Rp150.000
 * tampilkan batas waktu (default 2 jam)
 * area upload bukti: JPG/JPEG, PNG, atau PDF, maksimal 5 MB, dengan pesan error yang jelas bila tidak sesuai
 * setelah upload: status `Menunggu Verifikasi`
-* jika bukti **ditolak** admin: tampilkan status kembali `Menunggu Pembayaran`, alasan penolakan yang aman ditampilkan, dan aksi untuk mengunggah bukti baru; batas waktu yang ditampilkan tetap batas waktu reservasi awal, tidak di-reset (FD-106, DI-07)
+* jika bukti **ditolak** admin: tampilkan status kembali `Menunggu Pembayaran`, alasan penolakan yang aman ditampilkan, dan aksi untuk mengunggah bukti baru; batas waktu yang ditampilkan tetap batas waktu reservasi awal, tidak pernah di-reset (FD-106, FD-120). Jika batas waktu awal sudah lewat saat bukti ditolak, tampilkan state pesanan Dibatalkan karena batas waktu pembayaran habis
 
 ### Cash saat Pickup
 
@@ -850,7 +850,9 @@ Admin dapat:
 Form untuk mencatat order dari WhatsApp/offline: data customer, produk, tanggal pickup (dengan informasi kapasitas tersisa), metode & status pembayaran. Manual order memakai kapasitas yang sama dengan order website.
 
 * Form menerapkan **validasi yang sama** dengan checkout website dan menampilkan pesan validasi yang sama (FD-110).
-* Bila admin perlu melakukan **override terbatas**, override dilakukan secara eksplisit (bukan otomatis) dan **wajib** mengisi alasan; override tercatat di audit log (FD-110). Validasi mana yang dapat di-override masih OPEN (OC-14).
+* Override **hanya** tersedia untuk: minimum preorder days, booking horizon, pickup cutoff, dan daily capacity (FD-119). Validasi lain (mis. tanggal diblokir, produk Sold Out/nonaktif, larangan Cash untuk Pre-Order, aturan pembayaran) ditampilkan sebagai error biasa **tanpa** opsi override.
+* Override dilakukan secara eksplisit per validasi (bukan otomatis): UI menampilkan nilai/aturan normal (nilai sebelum) dan nilai yang dipakai (nilai sesudah), lalu **wajib** mengisi alasan. Admin dan timestamp tercatat otomatis di audit log.
+* Manual Order tidak menyediakan cara untuk melewati verifikasi QRIS, penerbitan tracking token, maupun state transition.
 * Setelah tersimpan, tampilkan nomor order dan **kode akses tracking** (FD-115) beserta aksi copy agar admin dapat menyampaikannya ke customer secara manual.
 
 ## Payment Management
@@ -860,7 +862,7 @@ Form untuk mencatat order dari WhatsApp/offline: data customer, produk, tanggal 
 * aksi **tolak** bukti dengan alasan → transaksi kembali `Menunggu Pembayaran` (FD-106)
 * tandai pembayaran Cash sebagai lunas (bukan untuk pelunasan sisa DP — FD-109)
 * **tidak ada** aksi konfirmasi manual untuk QRIS (FD-111)
-* daftar **payment exception** untuk direview; keputusan reinstate/refund dilakukan manual (FD-107; mekanisme reinstate OPEN — OC-13)
+* daftar **Payment Exception** untuk direview, dengan aksi mencatat manual resolution/refund (FD-107, FD-118). **Tidak ada** aksi reinstate untuk order Dibatalkan; bila customer tetap ingin memesan, customer membuat order baru
 * catat refund (jumlah, status, alasan; waktu & operator tercatat otomatis)
 
 ## Pickup Capacity
@@ -1183,7 +1185,8 @@ Design dianggap memenuhi requirement apabila:
 * [ ] Payment information jelas (nominal, DP, sisa, batas waktu), termasuk state bukti ditolak, QRIS gagal, dan pelunasan sisa via QRIS/Transfer.
 * [ ] Informasi pickup cutoff terlihat saat memilih tanggal pickup.
 * [ ] Admin hanya dapat memilih transition status yang diizinkan; order Selesai tidak dapat dibatalkan.
-* [ ] Override Manual Order selalu meminta alasan.
+* [ ] Override Manual Order hanya tersedia untuk empat validasi yang diizinkan dan selalu meminta alasan.
+* [ ] Tidak ada kontrol reinstate untuk order Dibatalkan.
 * [ ] Halaman order sukses menonjolkan nomor order dan kode akses.
 * [ ] Order tracking mudah dipahami.
 * [ ] Admin dashboard konsisten dengan brand tetapi tetap functional.

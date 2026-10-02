@@ -1,0 +1,14 @@
+# Local development database only. Not used in production.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: enjua
+      POSTGRES_PASSWORD: enjua
+      POSTGRES_DB: enjua
+    ports:
+      - "5432:5432"
+    volumes:
+      - enjua-pg:/var/lib/postgresql/data
+volumes:
+  enjua-pg:

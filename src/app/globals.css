@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — generated from src/styles/tokens.ts (keep in sync; enforced by
+ * tests/unit/design-tokens.test.ts). Fonts are system placeholders until the
+ * client supplies brand fonts (GL-01).
+ */
+@theme {
+  --color-background: #F8EDE1;
+  --color-surface: #FFF8F1;
+  --color-surface-muted: #F6EADD;
+  --color-foreground: #3E2B24;
+  --color-muted-foreground: #6B5248;
+  --color-primary: #6E4635;
+  --color-primary-foreground: #F8EDE1;
+  --color-accent: #7E5254;
+  --color-accent-foreground: #F8EDE1;
+  --color-accent-soft: #B79A98;
+  --color-border: #E2CFC0;
+  --color-focus: #6E4635;
+  --color-pastel-blush: #F1D9D6;
+  --color-pastel-beige: #E9DDD5;
+  --color-pastel-lavender: #E6DCE8;
+  --color-pastel-peach: #F6DCC8;
+  --color-badge-ready: #DCE6D3;
+  --color-badge-preorder: #F1D9D6;
+  --color-badge-soldout: #4A3B36;
+  --color-badge-soldout-foreground: #F8EDE1;
+  --color-danger: #9B2C2C;
+  --color-success: #2F6B3A;
+
+  --font-heading: Georgia, "Times New Roman", ui-serif, serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 1.25rem;
+  --radius-control: 0.75rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-body);
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+    line-height: 1.2;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "enjua-cake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
+    "db:seed-admin": "tsx --conditions=react-server scripts/seed-admin.ts"
+  },
+  "dependencies": {
+    "@date-fns/tz": "1.5.0",
+    "@node-rs/argon2": "2.2.1",
+    "better-auth": "1.7.7",
+    "date-fns": "4.4.0",
+    "drizzle-orm": "0.45.3",
+    "next": "16.3.8",
+    "postgres": "3.4.9",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@testcontainers/postgresql": "12.2.0",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.11",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "4.3.3",
+    "testcontainers": "12.2.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

@@ -208,11 +208,14 @@ const firstErrors = (error: z.ZodError) => {
 };
 
 /**
- * Full server-side checkout validation and pricing (PRD §37, IMPLEMENTATION-PLAN §11.1
- * steps 1–6). Read-only: no reservation is made. Order creation, which re-runs these
- * checks under the pickup-date lock, is Phase 4.
+ * Everything except pickup-date availability: input, cart (prices from the DB),
+ * and payment rules (FD-39–FD-44). Shared by website checkout and Manual Order,
+ * which applies the same rules (FD-110) before its own date evaluation.
  */
-export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Promise<CheckoutPreviewResult> {
+export async function prepareCheckout(
+  deps: CheckoutDeps,
+  rawInput: unknown,
+): Promise<{ ok: true; summary: CheckoutSummary; preorderFacts: Array<{ productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }> } | Extract<CheckoutPreviewResult, { ok: false }>> {
   const parsed = checkoutInputSchema.safeParse(rawInput);
   if (!parsed.success) return { ok: false, fieldErrors: firstErrors(parsed.error) };
   const input = parsed.data;
@@ -237,18 +240,11 @@ export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Pr
   } catch {
     return { ok: false, fieldErrors: { pickupDate: "Pilih tanggal pickup." } };
   }
-  const availability = await availabilityFor(
-    deps,
-    cart.lines.map((l) => ({ productType: l.product!.productType, minimumPreorderDays: l.product!.minimumPreorderDays })),
-  );
-  const status = availability.dates.find((d) => d.date === pickupDate) ?? { date: pickupDate, available: false as const, reason: "OUTSIDE_HORIZON" as const };
-  if (!status.available) {
-    return { ok: false, fieldErrors: { pickupDate: "Tanggal ini tidak tersedia. Silakan pilih tanggal lain." }, pickupReason: status.reason };
-  }
 
   const names = new Map(cart.lines.map((l) => [l.productId, l.product!]));
   return {
     ok: true,
+    preorderFacts: cart.lines.map((l) => ({ productType: l.product!.productType, minimumPreorderDays: l.product!.minimumPreorderDays })),
     summary: {
       customerName: input.customerName,
       whatsapp: input.whatsapp,
@@ -270,5 +266,22 @@ export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Pr
       payment: paymentBreakdown(cart.totals.grandTotal, input.paymentOption),
     },
   };
+}
+
+/**
+ * Full server-side checkout validation and pricing (PRD §37, IMPLEMENTATION-PLAN §11.1
+ * steps 1–6). Read-only: no reservation is made; placeOrder re-checks the date
+ * under the pickup-date lock.
+ */
+export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Promise<CheckoutPreviewResult> {
+  const prepared = await prepareCheckout(deps, rawInput);
+  if (!prepared.ok) return prepared;
+  const { summary } = prepared;
+  const availability = await availabilityFor(deps, prepared.preorderFacts);
+  const status = availability.dates.find((d) => d.date === summary.pickupDate) ?? { date: summary.pickupDate, available: false as const, reason: "OUTSIDE_HORIZON" as const };
+  if (!status.available) {
+    return { ok: false, fieldErrors: { pickupDate: "Tanggal ini tidak tersedia. Silakan pilih tanggal lain." }, pickupReason: status.reason };
+  }
+  return { ok: true, summary };
 }
 

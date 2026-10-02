@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
-import { admins, auditLogs, orderItems, orders, paymentTransactions } from "@/server/db/schema";
+import { admins, auditLogs, orderItems, orderOverrides, orders, paymentTransactions } from "@/server/db/schema";
 import { allowedTransitions, candidateTransitions, type OrderStatus } from "@/server/domain/orders/state-machine";
 
 import { expireDueReservations, expireIfDue, expireRemainingPaymentsIfDue } from "./order-lifecycle";
@@ -12,11 +12,12 @@ import { getAdminPaymentDetail } from "./payment-admin";
 
 export const ADMIN_ORDER_STATUSES = ["NEW", "CONFIRMED", "PROCESSING", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"] as const;
 
-export async function listAdminOrders(db: Database, clock: Clock, filters: { status?: OrderStatus; pickupDate?: string } = {}) {
+export async function listAdminOrders(db: Database, clock: Clock, filters: { status?: OrderStatus; pickupDate?: string; paymentMethod?: "QRIS" | "BANK_TRANSFER" | "CASH" } = {}) {
   await expireDueReservations(db, clock);
   const conditions: SQL[] = [];
   if (filters.status) conditions.push(eq(orders.orderStatus, filters.status));
   if (filters.pickupDate) conditions.push(eq(orders.pickupDate, filters.pickupDate));
+  if (filters.paymentMethod) conditions.push(eq(orders.paymentMethod, filters.paymentMethod));
   return db
     .select({
       id: orders.id,
@@ -87,6 +88,12 @@ export async function getAdminOrderDetail(db: Database, orderId: string, clock: 
     items,
     transactions,
     payments: await getAdminPaymentDetail(db, orderId),
+    overrides: await db
+      .select({ id: orderOverrides.id, type: orderOverrides.overrideType, before: orderOverrides.valueBefore, after: orderOverrides.valueAfter, reason: orderOverrides.reason, adminName: admins.name, createdAt: orderOverrides.createdAt })
+      .from(orderOverrides)
+      .leftJoin(admins, eq(orderOverrides.adminId, admins.id))
+      .where(eq(orderOverrides.orderId, orderId))
+      .orderBy(asc(orderOverrides.createdAt)),
     audit,
     cancelledBy,
     /** Targets the admin may choose now (FD-116); shown in the UI. */

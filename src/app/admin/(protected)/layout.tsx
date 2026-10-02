@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AdminNavLinks } from "@/components/admin/admin-nav";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/server/auth/session";
 
@@ -17,27 +18,18 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
           <Link href="/admin" className="font-heading text-xl">
             Enjua Cake&apos;s · Admin
           </Link>
-          <nav aria-label="Navigasi admin" className="flex flex-wrap items-center gap-2">
-            <Link href="/admin" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
-              Dashboard
-            </Link>
-            <Link href="/admin/pesanan" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
-              Pesanan
-            </Link>
-            <Link href="/admin/pembayaran" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
-              Pembayaran
-            </Link>
-            <Link href="/admin/akun" className="rounded-control px-3 py-2 underline-offset-4 hover:underline">
-              Akun
-            </Link>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-sm text-muted-foreground sm:inline">Masuk sebagai {admin.name}</span>
             <form action={logoutAction}>
               <Button type="submit" variant="secondary">
                 Keluar
               </Button>
             </form>
-          </nav>
+          </div>
         </div>
-        <p className="mx-auto max-w-6xl px-4 pb-3 text-sm text-muted-foreground">Masuk sebagai {admin.name}</p>
+        <nav aria-label="Navigasi admin" className="mx-auto max-w-6xl px-4 pb-3">
+          <AdminNavLinks />
+        </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
     </div>

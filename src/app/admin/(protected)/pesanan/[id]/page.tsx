@@ -15,6 +15,7 @@ import { getAdminOrderDetail } from "@/server/services/admin-orders";
 
 import { regenerateTokenAction, transitionOrderAction } from "../actions";
 import { PaymentSection } from "./payment-section";
+import { describeOverride, OVERRIDE_LABEL } from "@/lib/copy/admin";
 
 export const metadata: Metadata = { title: "Detail Pesanan" };
 
@@ -38,6 +39,8 @@ const EVENT_LABEL: Record<string, string> = {
   PAYMENT_PROOF_REJECTED: "Bukti transfer ditolak",
   TRANSFER_REMAINING_STARTED: "Pelunasan via transfer dimulai",
   CASH_MARKED_PAID: "Cash ditandai lunas",
+  MANUAL_ORDER_CREATED: "Manual Order dibuat",
+  ORDER_OVERRIDE_APPLIED: "Override validasi",
   REFUND_RECORDED: "Refund dicatat",
   REFUND_COMPLETED: "Refund selesai",
 };
@@ -157,6 +160,26 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               ) : null}
             </dl>
           </section>
+
+          {detail.overrides.length > 0 ? (
+            <section aria-labelledby="override" className="rounded-card border border-accent bg-surface p-5 text-sm">
+              <h2 id="override" className="mb-2 text-xl">
+                Override Manual Order
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {detail.overrides.map((o) => (
+                  <li key={o.id} className="border-l-2 border-accent pl-3">
+                    <p className="font-semibold">{OVERRIDE_LABEL[o.type]}</p>
+                    <p>{describeOverride(o.type, o.before as Record<string, unknown>, o.after as Record<string, unknown>)}</p>
+                    <p>Alasan: {o.reason}</p>
+                    <p className="text-muted-foreground">
+                      {o.adminName ?? "Admin"} · {formatWibDateTime(o.createdAt)} WIB
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <PaymentSection detail={detail} />
         </div>

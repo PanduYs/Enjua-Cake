@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
+
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 
-import { E2E_ORDERS_ADMIN } from "./fixtures";
+import { ORDERS_ADMIN_STATE } from "./fixtures";
 
 /**
  * Clicks the first calendar day whose accessible name ends with the given status
@@ -57,10 +59,10 @@ export async function createOrderViaUi(
   return { orderNumber, token };
 }
 
+/** Uses the orders admin session created once in global-setup. */
 export async function loginOrdersAdmin(page: Page) {
-  await page.goto("/admin/login");
-  await page.getByLabel("Email").fill(E2E_ORDERS_ADMIN.email);
-  await page.getByLabel("Password").fill(E2E_ORDERS_ADMIN.password);
-  await page.getByRole("button", { name: "Masuk" }).click();
+  const state = JSON.parse(readFileSync(ORDERS_ADMIN_STATE, "utf8")) as { cookies: Parameters<ReturnType<Page["context"]>["addCookies"]>[0] };
+  await page.context().addCookies(state.cookies);
+  await page.goto("/admin");
   await expect(page).toHaveURL(/\/admin$/);
 }

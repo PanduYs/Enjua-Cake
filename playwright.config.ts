@@ -21,7 +21,12 @@ export default defineConfig({
     trace: "retain-on-failure",
     launchOptions: process.env.PW_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PW_CHROMIUM_EXECUTABLE } : {},
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /admin-modules\.spec\.ts/ },
+    // Admin specs that change the shared catalog/settings run after the public specs,
+    // which assert exact product/category counts.
+    { name: "chromium-admin-mutations", use: { ...devices["Desktop Chrome"] }, testMatch: /admin-modules\.spec\.ts/, dependencies: ["chromium"] },
+  ],
   webServer: {
     command: `npx next start -p ${PORT}`,
     // Readiness probe must not touch the database: Playwright starts the server

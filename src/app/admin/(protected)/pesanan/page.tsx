@@ -13,6 +13,8 @@ import { ADMIN_ORDER_STATUSES, listAdminOrders } from "@/server/services/admin-o
 export const metadata: Metadata = { title: "Pesanan" };
 
 const isStatus = (v: unknown): v is (typeof ADMIN_ORDER_STATUSES)[number] => ADMIN_ORDER_STATUSES.includes(v as never);
+const METHODS = ["QRIS", "BANK_TRANSFER", "CASH"] as const;
+const isMethod = (v: unknown): v is (typeof METHODS)[number] => METHODS.includes(v as never);
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -20,14 +22,17 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
   const params = await searchParams;
   const status = isStatus(params.status) ? params.status : undefined;
   const pickupDate = isDate(params.tanggal) ? params.tanggal : undefined;
-  const rows = await listAdminOrders(getDb(), systemClock, {
-    status,
-    pickupDate,
-  });
+  const paymentMethod = isMethod(params.metode) ? params.metode : undefined;
+  const rows = await listAdminOrders(getDb(), systemClock, { status, pickupDate, paymentMethod });
 
   return (
     <section className="flex flex-col gap-6">
-      <h1 className="text-3xl">Pesanan</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl">Pesanan</h1>
+        <Link href="/admin/pesanan/baru" className="inline-flex min-h-11 items-center rounded-control bg-primary px-4 font-semibold text-primary-foreground">
+          Buat Manual Order
+        </Link>
+      </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3 rounded-card bg-surface p-4" aria-label="Filter pesanan">
         <div className="flex flex-col gap-1">
@@ -55,10 +60,23 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
             className="min-h-11 rounded-control border border-border bg-background px-3"
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filter-method" className="text-sm font-semibold">
+            Metode
+          </label>
+          <select id="filter-method" name="metode" defaultValue={paymentMethod ?? ""} className="min-h-11 rounded-control border border-border bg-background px-3">
+            <option value="">Semua metode</option>
+            {METHODS.map((m) => (
+              <option key={m} value={m}>
+                {PAYMENT_METHOD_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className="min-h-11 rounded-control bg-primary px-5 font-semibold text-primary-foreground">
           Terapkan
         </button>
-        {status || pickupDate ? (
+        {status || pickupDate || paymentMethod ? (
           <Link href="/admin/pesanan" className="inline-flex min-h-11 items-center px-2 underline underline-offset-4">
             Reset
           </Link>
@@ -75,7 +93,10 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
               <li key={o.id}>
                 <Link href={`/admin/pesanan/${o.id}`} className="flex flex-col gap-1 rounded-card bg-surface p-4">
                   <span className="font-mono font-semibold">{o.orderNumber}</span>
-                  <span>{o.customerName}</span>
+                  <span>
+                    {o.customerName}
+                    {o.source === "MANUAL" ? " · Manual Order" : ""}
+                  </span>
                   <span className="text-sm">Pickup: {formatIsoDateLong(o.pickupDate)}</span>
                   <span className="text-sm">
                     {ORDER_STATUS_LABEL[o.orderStatus]} · {PAYMENT_STATUS_LABEL[o.paymentStatus]}
@@ -119,7 +140,10 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
                         {o.orderNumber}
                       </Link>
                     </td>
-                    <td className="p-3">{o.customerName}</td>
+                    <td className="p-3">
+                      {o.customerName}
+                      {o.source === "MANUAL" ? <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 text-xs">Manual</span> : null}
+                    </td>
                     <td className="p-3">{o.pickupDate}</td>
                     <td className="p-3">{ORDER_STATUS_LABEL[o.orderStatus]}</td>
                     <td className="p-3">

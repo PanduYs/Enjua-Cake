@@ -66,7 +66,7 @@ const MAX_ORDER_NUMBER_ATTEMPTS = 5;
 
 const idempotencyKeySchema = z.uuid();
 
-async function findByIdempotencyKey(db: Pick<Database, "select">, key: string) {
+export async function findByIdempotencyKey(db: Pick<Database, "select">, key: string) {
   const [row] = await db
     .select({
       id: orders.id,
@@ -83,7 +83,7 @@ async function findByIdempotencyKey(db: Pick<Database, "select">, key: string) {
   return row ?? null;
 }
 
-function replay(row: NonNullable<Awaited<ReturnType<typeof findByIdempotencyKey>>>): PlaceOrderResult {
+export function replay(row: NonNullable<Awaited<ReturnType<typeof findByIdempotencyKey>>>): PlaceOrderResult {
   return {
     ok: true,
     order: {
@@ -221,7 +221,8 @@ export async function placeOrder(deps: PlaceOrderDeps, input: unknown, options: 
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-async function insertOrder(
+/** Shared by website checkout and Manual Order (FD-80, FD-115): same numbering, token, snapshots, payment. */
+export async function insertOrder(
   tx: Tx,
   args: {
     summary: CheckoutSummary;
@@ -229,6 +230,8 @@ async function insertOrder(
     settings: Awaited<ReturnType<typeof getSettings>>;
     idempotencyKey: string;
     orderDateEffective: IsoDate;
+    /** Manual Order: the creating admin (source MANUAL, audit actor). */
+    createdByAdminId?: string;
     productFacts: Map<
       string,
       {
@@ -253,7 +256,8 @@ async function insertOrder(
     .values({
       orderNumber,
       trackingTokenHash: hashTrackingToken(trackingToken),
-      source: "WEBSITE",
+      source: args.createdByAdminId ? "MANUAL" : "WEBSITE",
+      createdByAdminId: args.createdByAdminId ?? null,
       customerName: summary.customerName,
       customerPhone: summary.whatsapp,
       notes: summary.notes,
@@ -315,12 +319,13 @@ async function insertOrder(
     newValue: {
       orderNumber,
       orderStatus: "NEW",
+      source: args.createdByAdminId ? "MANUAL" : "WEBSITE",
       paymentMethod: summary.paymentMethod,
       paymentOption: summary.paymentOption,
       pickupDate: summary.pickupDate,
       grandTotal: payment.total,
     },
-    actor: { type: "SYSTEM" },
+    actor: args.createdByAdminId ? { type: "ADMIN", adminId: args.createdByAdminId } : { type: "SYSTEM" },
   });
 
   return {

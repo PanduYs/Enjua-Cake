@@ -13,7 +13,7 @@ next-env.d.ts
 !.env.example
 
 # local storage driver data
-.storage/
+.storage*/
 
 # test & coverage output
 coverage/

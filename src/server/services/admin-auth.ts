@@ -1,7 +1,5 @@
 import "server-only";
 
-import { APIError } from "better-auth/api";
-
 import type { Auth } from "@/server/auth/config";
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
@@ -9,6 +7,17 @@ import { writeAudit } from "@/server/observability/audit";
 import { ADMIN_LOGIN_RATE_LIMITS, consumeRateLimit } from "@/server/security/rate-limit";
 import { getClientIp } from "@/server/security/request";
 import { adminLoginSchema, changePasswordSchema, toFieldErrors } from "@/lib/validation/admin-auth";
+
+/**
+ * Better Auth client-error check without `instanceof`: the auth singleton may be
+ * created in a different server chunk than this module, so class identity is not
+ * reliable. Only 4xx errors are authentication outcomes; 5xx must propagate.
+ */
+export function isAuthClientError(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name !== "APIError") return false;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === "number" && statusCode >= 400 && statusCode < 500;
+}
 
 export interface AuthServiceDeps {
   auth: Auth;
@@ -64,7 +73,7 @@ export async function loginAdmin(deps: AuthServiceDeps, input: unknown, requestH
     return { ok: true, adminId: response.user.id, responseHeaders };
   } catch (error) {
     // Only authentication failures map to a generic message; infrastructure errors propagate.
-    if (!(error instanceof APIError)) throw error;
+    if (!isAuthClientError(error)) throw error;
     await writeAudit(deps.db, {
       entityType: "admin_auth",
       entityId: email,
@@ -123,7 +132,7 @@ export async function changeAdminPassword(
     });
     return { ok: true, responseHeaders };
   } catch (error) {
-    if (!(error instanceof APIError)) throw error;
+    if (!isAuthClientError(error)) throw error;
     return { ok: false, code: "WRONG_CURRENT_PASSWORD" };
   }
 }

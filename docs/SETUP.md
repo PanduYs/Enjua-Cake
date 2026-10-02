@@ -16,6 +16,7 @@ docker compose up -d              # PostgreSQL lokal (opsional)
 set -a; . ./.env.local; set +a    # muat env untuk script CLI
 npm run db:migrate                # terapkan migration di ./drizzle
 npm run db:seed-admin             # buat admin pertama (development saja)
+npm run db:seed-sample            # katalog CONTOH + gambar placeholder (development saja)
 npm run dev                       # http://localhost:3000/admin/login
 ```
 
@@ -33,6 +34,8 @@ npm run dev                       # http://localhost:3000/admin/login
 | `npm run db:generate` | Generate migration SQL setelah mengubah `src/server/db/schema` |
 | `npm run db:migrate` | Terapkan migration |
 | `npm run db:seed-admin` | Buat admin dari `SEED_ADMIN_*` (ditolak di production) |
+| `npm run db:seed-sample` | Kategori & produk contoh berlabel "Contoh" (`-- --reset` untuk mengosongkan katalog & settings dulu) |
+| `npm run test:e2e` | Playwright + axe + matrix responsive (butuh `npm run build` dan `E2E_DATABASE_URL`) |
 
 ### Integration test
 
@@ -41,10 +44,21 @@ Butuh database sekali pakai — **isinya dihapus setiap run**:
 - `TEST_DATABASE_URL=postgres://…/enjua_test npm run test:integration`, atau
 - tanpa `TEST_DATABASE_URL`: Testcontainers menjalankan `postgres:16` (butuh Docker).
 
+### E2E
+
+```bash
+npm run build
+E2E_DATABASE_URL=postgres://…/enjua_e2e npm run test:e2e
+```
+
+Database E2E **dihapus dan di-seed ulang** setiap run. Chromium: `npx playwright install chromium`,
+atau set `PW_CHROMIUM_EXECUTABLE` ke Chromium yang sudah terpasang.
+
 ## Aturan penting
 
 - Jangan pernah commit `.env*` selain `.env.example`; secret production hanya di dashboard hosting.
 - Ubah skema hanya lewat `src/server/db/schema` + `npm run db:generate`; CI menolak skema tanpa migration.
 - `src/server/domain` harus murni (tanpa framework/ORM/provider) — dijaga ESLint.
 - Payment provider Phase 1 hanya `mock`; `PAYMENT_ENV=production` dengan mock ditolak saat startup.
-- Storage Phase 1 hanya driver `local` (folder `.storage/`, di-ignore git).
+- Storage saat ini hanya driver `local` (folder `.storage/`, di-ignore git); file publik disajikan lewat `/storage/...`.
+- Konten bisnis (alamat, WhatsApp, jam) dibaca dari Website Settings; yang belum diisi klien disembunyikan, tidak dikarang.

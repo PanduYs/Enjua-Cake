@@ -6,4 +6,4 @@ Website pemesanan kue (pickup) dengan admin dashboard.
 - Rencana teknis: [`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md)
 - Setup development: [`docs/SETUP.md`](docs/SETUP.md)
 
-Status: **Phase 1 — Foundation**.
+Status: **Phase 2 — Public Website** (Phase 1 Foundation selesai).

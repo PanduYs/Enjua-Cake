@@ -18,7 +18,8 @@ export function getStorage(): ObjectStorage {
     switch (env.STORAGE_DRIVER) {
       case "local":
         globalForStorage.__enjuaStorage = createLocalStorage({
-          baseDir: path.resolve(process.cwd(), env.STORAGE_LOCAL_DIR),
+          // Runtime data directory, not source: exclude from output file tracing.
+          baseDir: path.resolve(/*turbopackIgnore: true*/ process.cwd(), env.STORAGE_LOCAL_DIR),
           publicBaseUrl: "/storage",
         });
         break;

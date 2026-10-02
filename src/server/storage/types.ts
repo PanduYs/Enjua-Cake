@@ -42,6 +42,14 @@ export class StorageKeyError extends Error {
   }
 }
 
+/**
+ * Bundlers may duplicate this module across server chunks, so `instanceof` can
+ * fail for an error thrown by a shared singleton. Identify by name instead.
+ */
+export function isStorageKeyError(error: unknown): error is StorageKeyError {
+  return error instanceof Error && error.name === "StorageKeyError";
+}
+
 const KEY_RE = /^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*\.[a-z0-9]{1,8}$/;
 
 /**

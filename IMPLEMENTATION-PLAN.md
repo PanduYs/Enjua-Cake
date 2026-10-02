@@ -1,6 +1,6 @@
 # Enjua Cake's — Technical Implementation Plan
 
-**Document Version:** 1.0  
+**Document Version:** 1.1 (revisi TD-09: masa berlaku pelunasan DP terpisah dari reservasi awal)  
 **Tanggal:** 2 Oktober 2026  
 **Status:** Draft — **menunggu persetujuan user**. Belum ada kode yang boleh ditulis sebelum dokumen ini disetujui.  
 **Sumber requirement:** `FINAL-REQUIREMENT-DECISIONS.md` (v1.2), `PRD.md` (v1.3), `PRD-Design.md` (v1.3), `design-reference/homepage-reference.jpeg`
@@ -203,7 +203,7 @@ enjua-cake/
 | `CartDrawer/Page` | Quantity dibatasi `max_quantity_per_order`; info Pre-Order & "Cash tidak tersedia" bila ada Pre-Order; **tanpa** pemilihan tanggal (FD-33). |
 | `PickupDatePicker` | Data ketersediaan dari server; tanggal disabled dengan alasan yang dapat dibaca screen reader & disentuh (bukan tooltip hover). |
 | `PaymentMethodSelector` | Cash disabled + alasan bila ada Pre-Order (FD-40); opsi DP hanya untuk QRIS/Transfer. |
-| `QrisPanel` | QR, nominal, countdown ke `reservation_expires_at` order (tidak di-reset — FD-120, DI-08), tombol "Buat QRIS baru" setelah gagal (FD-112), polling status. |
+| `QrisPanel` | QR, nominal, countdown ke `reservation_expires_at` order untuk pembayaran awal (tidak di-reset — FD-120, DI-08) atau ke `expires_at` transaksi untuk pelunasan DP (TD-09), tombol "Buat QRIS baru" setelah gagal (FD-112), polling status. |
 | `TransferPanel` | Instruksi rekening dari settings, upload bukti, state ditolak + re-upload (FD-106). |
 | `StatusTimeline` | Order status & payment status terpisah (BR-11), label + ikon + state. |
 | `WhatsAppButton` | Link `wa.me` dengan pesan kontekstual tanpa token (FD-77). |
@@ -458,6 +458,8 @@ Order yang `WAITING_PAYMENT` dengan `reservation_expires_at ≤ now()` **tidak**
 - **Trade-off:** Ada jeda singkat di mana status order di database masih "Pesanan Baru" padahal logis sudah expired; semua tampilan memakai fungsi status yang sama sehingga customer/admin tetap melihat status yang benar.
 - **Dampak:** Platform hosting tidak harus mendukung cron per menit untuk menjaga kebenaran; cukup untuk kerapian.
 
+Sweeper yang sama juga memanggil `expirePaymentTransactionIfDue` untuk transaksi **pelunasan DP** yang lewat `expires_at`-nya. Jalur ini terpisah dari `expireIfDue` order: hanya status transaksi yang berubah, order tetap aktif (TD-09, DI-01).
+
 ## 13.5 Override kapasitas Manual Order
 
 Override `DAILY_CAPACITY` (FD-119) melewati langkah cek 4 di dalam transaksi yang **sama** (lock tetap diambil), lalu mencatat `order_overrides` dengan nilai sebelum (mis. `{capacity:10, used:10}`) dan sesudah (`{used:11}`). Tanggal tersebut tetap tampil penuh untuk order website.
@@ -495,7 +497,7 @@ getTransactionStatus(providerReference) → { status, amount, paidAt }
 - **Trade-off:** Biaya, persyaratan dokumen merchant (perorangan vs badan usaha), dan waktu aktivasi production **harus diverifikasi langsung** ke provider pada saat onboarding — angka biaya tidak dicantumkan di sini karena dapat berubah. Pilihan final sebaiknya diambil setelah klien mengecek kelayakan onboarding di kedua provider.
 - **Dampak:** Development & test dapat berjalan penuh dengan `MockProvider` sebelum merchant account tersedia (GL-10 bukan blocker).
 
-**QR expiry buffer:** QR dibuat dengan masa berlaku `min(provider_max, reservation_expires_at − buffer)`; rekomendasi buffer **2 menit**, dapat dikonfigurasi. Tujuannya mengurangi kasus pembayaran sukses yang webhook-nya baru tiba setelah slot dilepas.
+**QR expiry buffer:** Untuk pembayaran awal (DP/FULL), QR dibuat dengan masa berlaku `min(provider_max, reservation_expires_at − buffer)`; rekomendasi buffer **2 menit**, dapat dikonfigurasi. Tujuannya mengurangi kasus pembayaran sukses yang webhook-nya baru tiba setelah slot dilepas. Untuk **pelunasan DP**, QR mengikuti `expires_at` transaksi pelunasan itu sendiri (TD-09), karena tidak ada slot yang dipertaruhkan.
 
 ## 14.1 Model data pembayaran
 
@@ -511,17 +513,24 @@ getTransactionStatus(providerReference) → { status, amount, paidAt }
 - `dp_amount = ceil(grand_total × 0.5)`; `remaining = grand_total − dp_amount` — integer, dihitung domain (FD-44). Contoh tes: 125.555 → 62.778 / 62.777.
 - **DP** (QRIS/Transfer saja — FD-42): transaksi pertama `purpose = DP`. Setelah sukses → payment `PARTIALLY_PAID`, order **Dikonfirmasi** (QRIS otomatis; Transfer setelah admin approve).
 - **Pelunasan** (FD-46, FD-109): dari halaman tracking, customer memilih QRIS atau Transfer → transaksi `purpose = REMAINING` sebesar sisa. **Cash tidak ditawarkan** untuk pelunasan.
-  - Masa berlaku transaksi pelunasan: rekomendasi memakai durasi yang sama (QRIS 30 menit, Transfer 2 jam) — **TD-09**, perlu persetujuan karena PRD hanya mengatur durasi reservasi slot.
-  - Transaksi pelunasan yang kedaluwarsa hanya membuat transaksi itu `EXPIRED`; order **tidak** dibatalkan (DI-01).
+  - Masa berlaku transaksi pelunasan adalah **parameter tersendiri** (TD-09), terpisah dari reservasi awal. `expires_at` transaksi pelunasan = waktu dibuat + durasi pelunasan metode terkait; tidak memakai dan tidak mengubah `reservation_expires_at` order.
+  - Transaksi pelunasan yang kedaluwarsa hanya membuat transaksi itu `EXPIRED`; order **tetap aktif** dan tidak dibatalkan (DI-01). Customer dapat membuat transaksi pelunasan baru.
+  - Kedaluwarsa transaksi pelunasan difinalisasi oleh fungsi terpisah `expirePaymentTransactionIfDue(transactionId)` (lazy + sweeper yang sama dengan §13.4), yang **tidak pernah** menyentuh order status maupun kapasitas.
 - **Penuh**: transaksi `purpose = FULL`; sukses → `PAID`.
 - **Guard Selesai** (DI-09): transition Siap Diambil → Selesai ditolak bila payment ≠ `PAID` (EC-23).
 
-## TD-09 — Masa berlaku transaksi pelunasan
+## TD-09 — Masa berlaku transaksi pelunasan DP *(FINAL setelah technical review)*
 
-- **Rekomendasi:** Sama dengan durasi reservasi metode terkait (configurable).
-- **Alasan:** Konsisten dan sederhana; tidak memengaruhi kapasitas karena slot order DP sudah aman.
-- **Trade-off:** Customer yang terlambat harus membuat transaksi pelunasan baru (tanpa batas jumlah percobaan).
-- **Dampak:** Tidak ada perubahan business rule; hanya parameter teknis.
+> Masa berlaku transaksi pelunasan DP merupakan **parameter yang terpisah dari reservation awal**. Jika transaksi pelunasan expired, **hanya transaksi pembayaran tersebut** yang berstatus `EXPIRED` dan **order tetap aktif**. Durasi default transaksi pelunasan dapat menggunakan nilai yang sama dengan reservation untuk V1, tetapi implementasi harus memungkinkan **konfigurasi terpisah** di masa depan tanpa mengubah business rule order.
+
+- **Rekomendasi implementasi:**
+  - Dua key konfigurasi tersendiri: `qris_remaining_payment_minutes` dan `transfer_remaining_payment_minutes` (§27), **terpisah** dari `qris_reservation_minutes` / `transfer_reservation_minutes`.
+  - Default V1 bernilai sama dengan reservation (QRIS 30 menit, Transfer 120 menit).
+  - Kode pelunasan hanya membaca key pelunasan; kode reservasi hanya membaca key reservasi. Tidak ada fungsi yang memakai satu nilai untuk keduanya.
+  - Expiry pelunasan hanya mengubah status transaksi (`EXPIRED`); tidak memicu pembatalan order, tidak melepas slot, tidak mengubah `reservation_expires_at`.
+- **Alasan:** Reservasi awal melindungi slot kapasitas (FD-12, FD-13, FD-14), sedangkan pelunasan terjadi setelah slot aman (DI-01). Memisahkan parameter mencegah perubahan salah satu aturan ikut mengubah yang lain.
+- **Trade-off:** Ada dua pasang konfigurasi yang nilainya sama di V1; sedikit lebih banyak konfigurasi untuk dirawat. Customer yang terlambat harus membuat transaksi pelunasan baru (tanpa batas jumlah percobaan).
+- **Dampak:** Tidak ada perubahan business rule order. Durasi pelunasan dapat diubah di masa depan cukup dengan mengganti nilai konfigurasi, tanpa menyentuh logika reservasi, kapasitas, atau state machine order.
 
 ---
 
@@ -575,7 +584,10 @@ Checkout (Transfer) → transaksi WAITING_PAYMENT, expires_at = reservation_expi
            now ≥ reservation_expires_at → langsung expire: EXPIRED + Dibatalkan + slot lepas
 ```
 
-- Untuk pelunasan via transfer, alur sama, tetapi expiry hanya memengaruhi transaksi pelunasan (DI-01).
+- Untuk pelunasan via transfer, alurnya sama, dengan perbedaan:
+  - batas waktu yang dipakai adalah `expires_at` transaksi pelunasan (durasi pelunasan, TD-09), **bukan** `reservation_expires_at`;
+  - penolakan bukti mengembalikan transaksi ke `WAITING_PAYMENT` tanpa mereset `expires_at` transaksi (FD-106);
+  - bila `expires_at` lewat, **hanya** transaksi pelunasan yang `EXPIRED`; order tetap aktif, tidak Dibatalkan, slot tidak dilepas (DI-01).
 - Order dari WhatsApp (bukti dikirim via WA): admin mengunggah bukti atas nama order dari dashboard lalu memverifikasi (PRD §18).
 
 ---
@@ -767,7 +779,8 @@ Disimpan di tabel `settings` (key → JSON) dengan schema Zod dan nilai default 
 | Pickup | pickup_hours (info), pickup_instructions, pickup_cutoff | cutoff `15:00` |
 | Kapasitas | default_capacity, booking_horizon_days | `10`, `60` |
 | Pembayaran | bank_accounts, payment_instructions | Placeholder |
-| Reservasi | qris_reservation_minutes, transfer_reservation_minutes, qr_expiry_buffer_minutes | `30`, `120`, `2` |
+| Reservasi awal | qris_reservation_minutes, transfer_reservation_minutes, qr_expiry_buffer_minutes | `30`, `120`, `2` |
+| Pelunasan DP (TD-09) | qris_remaining_payment_minutes, transfer_remaining_payment_minutes | `30`, `120` (sama dengan reservasi untuk V1, tetapi key terpisah) |
 
 ## TD-18 — Lokasi pengaturan durasi reservasi (DI-06)
 
@@ -775,6 +788,8 @@ Disimpan di tabel `settings` (key → JSON) dengan schema Zod dan nilai default 
 - **Alasan:** Klien dapat menyesuaikan tanpa deploy ulang; batas mencegah salah ketik ekstrem.
 - **Trade-off:** Admin dapat mengubah perilaku sistem penting; dimitigasi dengan audit log dan batas.
 - **Dampak:** Order yang sudah ada tidak terpengaruh (timer tidak pernah di-reset — FD-120).
+
+Key durasi pelunasan DP (TD-09) disimpan terpisah di tabel yang sama. Untuk V1 key tersebut tidak wajib tampil di UI admin; arsitekturnya sudah memungkinkan ditampilkan dan diubah terpisah di masa depan tanpa mengubah logika order.
 
 Perubahan settings memicu revalidasi cache halaman publik dan dicatat di audit log.
 
@@ -907,7 +922,7 @@ Testing konkuren wajib (Phase 7): N request paralel untuk 1 slot tersisa → tep
 | Level | Tools | Cakupan wajib |
 |---|---|---|
 | Unit (domain) | Vitest | Harga & sale price; DP ceil (contoh ganjil); tanggal efektif & cutoff (batas detik); minimum Pre-Order campuran; horizon; status ketersediaan tanggal; state machine exhaustive (semua pasangan); `derivePaymentStatus`; WhatsApp link tanpa token; format nomor order; validasi Zod |
-| Integration | Vitest + Testcontainers (PostgreSQL asli) | `placeOrder` lengkap; **race 20 request paralel untuk 1 slot → 1 sukses**; expiry lazy vs sweeper; webhook idempotent (event sama 2×); webhook terlambat → exception, order tetap Dibatalkan; reject bukti sebelum/sesudah expiry (FD-120); Manual Order override hanya 4 tipe + audit lengkap; Cash dilarang untuk Pre-Order; Selesai butuh PAID |
+| Integration | Vitest + Testcontainers (PostgreSQL asli) | `placeOrder` lengkap; **race 20 request paralel untuk 1 slot → 1 sukses**; expiry lazy vs sweeper; webhook idempotent (event sama 2×); webhook terlambat → exception, order tetap Dibatalkan; reject bukti sebelum/sesudah expiry (FD-120); transaksi pelunasan DP expired → hanya transaksi `EXPIRED`, order tetap aktif & slot tidak dilepas, durasi dibaca dari key pelunasan terpisah (TD-09); Manual Order override hanya 4 tipe + audit lengkap; Cash dilarang untuk Pre-Order; Selesai butuh PAID |
 | E2E | Playwright | Customer: katalog → cart → checkout (QRIS mock, Transfer, Cash) → sukses → tracking → pelunasan DP. Admin: login, verifikasi bukti, transisi status, batal, Manual Order + override, kapasitas, settings |
 | Responsive | Playwright (matrix §33) | Tidak ada horizontal overflow (cek `scrollWidth`), CTA terlihat, screenshot review |
 | Accessibility | @axe-core/playwright + manual | Tanpa pelanggaran serius/kritis pada halaman utama & admin inti |
@@ -1017,7 +1032,7 @@ Phase 1–4 dapat dikerjakan sebelum merchant account dan data klien tersedia (m
 | TD-06 | Lock per tanggal + hitung order aktif | §13 |
 | TD-07 | Lazy expiry + sweeper terjadwal | §13.4 |
 | TD-08 | Adapter provider; Midtrans kandidat utama, Xendit alternatif; QR expiry buffer 2 menit | §14 |
-| TD-09 | Masa berlaku transaksi pelunasan = durasi reservasi metode | §15 |
+| TD-09 | Masa berlaku pelunasan DP = parameter terpisah dari reservasi awal; default V1 sama nilainya; expiry hanya memengaruhi transaksi (**FINAL**) | §15 |
 | TD-10 | Better Auth, tanpa forgot-password publik | §8 |
 | TD-11 | Token 256-bit, SHA-256 hash, URL fragment, cookie sesi tracking | §21 |
 | TD-12 | Suffix nomor order acak Crockford Base32 | §21 |

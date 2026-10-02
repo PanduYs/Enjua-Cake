@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { addDays, addProductToCart, clickCalendarDay, longIndonesianDate, wibToday } from "./helpers";
+import { addProductToCart, clickDayWithStatus } from "./helpers";
 
 test.describe("Keranjang", () => {
   test("add from detail, persists across reload, change quantity, remove", async ({ page }) => {
@@ -61,18 +61,15 @@ test.describe("Checkout", () => {
     await expect(cash).toBeDisabled();
     await expect(page.getByText("Cash hanya tersedia untuk pesanan Ready Stock.")).toBeVisible();
 
-    const today = wibToday();
-    await clickCalendarDay(page, today); // inside the Pre-Order lead time
-    await expect(page.getByText(`${longIndonesianDate(today)}: Belum memenuhi minimum Pre-Order.`)).toBeVisible();
+    const tooEarly = await clickDayWithStatus(page, "tidak tersedia: Belum memenuhi minimum Pre-Order");
+    await expect(page.getByText(`${tooEarly}: Belum memenuhi minimum Pre-Order.`)).toBeVisible();
     await expect(page.getByText("Belum ada tanggal dipilih.")).toBeVisible();
 
-    const blocked = addDays(today, 10); // seeded as blocked
-    await clickCalendarDay(page, blocked);
-    await expect(page.getByText(`${longIndonesianDate(blocked)}: Tutup.`)).toBeVisible();
+    const blocked = await clickDayWithStatus(page, "tidak tersedia: Tutup"); // seeded blocked date
+    await expect(page.getByText(`${blocked}: Tutup.`)).toBeVisible();
 
-    const chosen = addDays(today, 12);
-    await clickCalendarDay(page, chosen);
-    await expect(page.getByText(`Tanggal dipilih: ${longIndonesianDate(chosen)}`)).toBeVisible();
+    const chosen = await clickDayWithStatus(page, "tersedia");
+    await expect(page.getByText(`Tanggal dipilih: ${chosen}`)).toBeVisible();
 
     await page.getByLabel("Nama").fill("Pelanggan E2E");
     await page.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");

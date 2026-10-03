@@ -14,11 +14,57 @@ test.describe("Beranda", () => {
     await expect(categories.getByRole("link")).toHaveCount(4);
     await expect(categories.getByRole("link", { name: /Custom Cake/ })).toHaveAttribute("href", "/produk?kategori=custom-cake");
 
-    for (const name of ["Tentang Kami", "Cara Pesan", "Kontak"]) {
+    for (const name of ["Cara Pesan", "Kontak"]) {
       await expect(page.getByRole("heading", { level: 2, name, exact: true })).toBeVisible();
     }
+    // About was removed at the client's request: no section, no anchor, no nav link anywhere.
+    await expect(page.getByRole("heading", { name: "Tentang Kami" })).toHaveCount(0);
+    await expect(page.locator("#tentang-kami, a[href*='tentang-kami']")).toHaveCount(0);
     await expect(page.getByText("sebelum pukul 15:00 WIB")).toBeVisible();
     await expect(page.getByRole("region", { name: "Kontak" }).getByText("Alamat pickup contoh (data E2E)")).toBeVisible();
+  });
+
+  test("hero: full-width editorial hero, two-line headline, both CTAs, no circular photo", async ({ page }) => {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      const hero = page.getByRole("region", { name: "Kue Buatan Tangan untuk Momen Manismu" });
+      const box = (await hero.boundingBox())!;
+      expect(box.width).toBe(width); // full bleed
+      expect(box.height).toBeLessThan(900); // never a full screen of scrolling before the products
+      const lines = await page.locator("#hero-title").evaluate((h) => Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)));
+      expect(lines).toBe(2);
+      await expect(hero.getByRole("link", { name: "Pesan Sekarang" })).toHaveAttribute("href", "/produk");
+      await expect(hero.getByRole("link", { name: "Lihat Produk" })).toHaveAttribute("href", "/produk");
+      await expect(hero.locator("img.rounded-full")).toHaveCount(0);
+    }
+  });
+
+  test("hero parallax moves only with motion allowed; reduced motion keeps it still", async ({ browser }) => {
+    for (const reducedMotion of ["no-preference", "reduce"] as const) {
+      const page = await (await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion })).newPage();
+      await page.goto("/");
+      await page.mouse.wheel(0, 300);
+      const transform = () => page.locator(".enjua-parallax").evaluate((el) => getComputedStyle(el).transform);
+      if (reducedMotion === "reduce") {
+        await page.waitForTimeout(300);
+        expect(await transform()).toBe("none");
+      } else {
+        await expect.poll(transform).not.toBe("none");
+      }
+      await page.context().close();
+    }
+  });
+
+  test("mobile categories: a swipeable rail that never widens the page and stays keyboard reachable", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const rail = page.getByRole("region", { name: "Kategori" }).getByRole("list");
+    expect(await rail.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    const last = rail.getByRole("link").last();
+    await last.focus();
+    await expect(last).toBeInViewport();
   });
 
   test("floating WhatsApp uses wa.me with a pre-filled message and no token", async ({ page }) => {
@@ -104,9 +150,10 @@ test.describe("Navigasi", () => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Navigasi utama" });
-    for (const label of ["Beranda", "Produk", "Cara Pesan", "Tentang Kami", "Lacak Pesanan", "Kontak"]) {
+    for (const label of ["Beranda", "Produk", "Cara Pesan", "Lacak Pesanan", "Kontak"]) {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
+    await expect(nav.getByRole("link", { name: "Tentang Kami" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /^Keranjang/ })).toBeVisible();
     await expect(page.getByRole("banner").getByRole("link", { name: "Pesan Sekarang" })).toBeVisible();
     await expect(page.getByRole("searchbox")).toHaveCount(0);
@@ -127,6 +174,30 @@ test.describe("Navigasi", () => {
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(page.getByRole("button", { name: "Buka menu" })).toBeFocused();
+  });
+
+  test("mobile drawer really covers the screen and every item can be tapped (backdrop-filter regression)", async ({ browser }) => {
+    // The header's backdrop-filter used to become the drawer's containing block: the menu opened
+    // as a ~49 px strip with every item but the first clipped, although aria-expanded was true.
+    for (const viewport of [{ width: 360, height: 740 }, { width: 412, height: 915 }]) {
+      const page = await (await browser.newContext({ viewport, isMobile: true, hasTouch: true })).newPage();
+      await page.goto("/");
+      await page.getByRole("button", { name: "Buka menu" }).tap();
+      const menu = page.getByRole("navigation", { name: "Menu utama" });
+      const panel = page.locator(`[id="${await page.getByRole("button", { name: "Tutup menu" }).getAttribute("aria-controls")}"]`);
+      await panel.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+      const box = (await panel.boundingBox())!;
+      expect(box.y).toBe(64);
+      expect(box.height).toBe(viewport.height - 64);
+      for (const link of await menu.getByRole("link").all()) await expect(link).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+      await menu.getByRole("link", { name: "Cara Pesan" }).tap();
+      await expect(menu).toBeHidden();
+      await expect(page.getByRole("heading", { level: 2, name: "Cara Pesan" })).toBeInViewport();
+      expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+      await page.context().close();
+    }
   });
 
   test("cart, checkout and tracking pages are reachable and not indexed", async ({ page }) => {

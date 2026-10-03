@@ -20,7 +20,7 @@ export default async function AdminSettingsPage() {
   ].filter(Boolean);
   return (
     <section className="flex max-w-3xl flex-col gap-6">
-      <h1 className="text-3xl">Pengaturan Website</h1>
+      <h1 className="text-2xl sm:text-3xl">Pengaturan Website</h1>
       {missing.length > 0 ? (
         <p className="rounded-control border border-accent bg-surface px-4 py-3 text-sm">
           Belum diisi: {missing.join(", ")}. Bagian terkait disembunyikan di website sampai data resmi dari pemilik usaha dimasukkan.

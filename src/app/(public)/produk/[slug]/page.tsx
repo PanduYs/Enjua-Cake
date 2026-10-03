@@ -42,7 +42,7 @@ export default async function ProductDetailPage({ params }: { params: Params }) 
   if (!product) notFound();
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:py-12">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-12">
       <nav aria-label="Breadcrumb" className="mb-6 text-sm">
         <ol className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <li>
@@ -68,7 +68,7 @@ export default async function ProductDetailPage({ params }: { params: Params }) 
 
         <div className="flex flex-col gap-4">
           <ProductBadges productType={product.productType} soldOut={product.soldOut} />
-          <h1 className="text-4xl sm:text-5xl">{product.name}</h1>
+          <h1 className="text-[2rem] sm:text-5xl">{product.name}</h1>
           <PriceTag {...product.price} size="lg" />
           <AddToCart
             product={{

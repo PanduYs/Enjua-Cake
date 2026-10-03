@@ -20,7 +20,7 @@ export default async function AdminAccountPage() {
   return (
     <section className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-3xl">Akun</h1>
+        <h1 className="text-2xl sm:text-3xl">Akun</h1>
         <p className="text-muted-foreground">{admin.email}</p>
       </div>
       <div className="max-w-md rounded-card bg-surface p-6">

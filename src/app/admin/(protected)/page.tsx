@@ -11,14 +11,14 @@ import { getDashboard } from "@/server/services/admin-dashboard";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-const card = "flex flex-col gap-1 rounded-card bg-surface p-4";
+const card = "flex flex-col gap-0.5 rounded-card bg-surface p-3 sm:gap-1 sm:p-4";
 const link = "font-semibold text-primary underline underline-offset-4";
 
 function Stat({ label, value, href, testId }: { label: string; value: string | number; href?: string; testId?: string }) {
   const body = (
     <>
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="font-heading text-3xl" data-testid={testId}>
+      <span className="text-xs text-muted-foreground sm:text-sm">{label}</span>
+      <span className="font-heading text-2xl sm:text-3xl" data-testid={testId}>
         {value}
       </span>
     </>
@@ -39,10 +39,10 @@ export default async function AdminDashboardPage() {
   const needsAttention = d.pendingProofs + d.openExceptions + d.refundCandidates + d.attention.cashUnconfirmed.length + d.attention.readyUnpaid.length;
 
   return (
-    <section className="flex flex-col gap-8">
+    <section className="flex flex-col gap-6 sm:gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl">Dashboard</h1>
           <p className="text-muted-foreground">Halo, {admin.name}. Hari ini {formatIsoDateLong(d.today)}.</p>
         </div>
         <Link href="/admin/pesanan/baru" className="inline-flex min-h-11 items-center rounded-control bg-primary px-4 font-semibold text-primary-foreground">
@@ -57,7 +57,7 @@ export default async function AdminDashboardPage() {
         {needsAttention === 0 ? (
           <p className="rounded-card bg-surface p-4 text-muted-foreground">Tidak ada yang perlu ditindaklanjuti saat ini.</p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
             {d.pendingProofs > 0 ? <Stat label="Bukti transfer menunggu verifikasi" value={d.pendingProofs} href="/admin/pembayaran" testId="stat-proofs" /> : null}
             {d.openExceptions > 0 ? <Stat label="Payment Exception perlu direview" value={d.openExceptions} href="/admin/pembayaran" testId="stat-exceptions" /> : null}
             {d.refundCandidates > 0 ? <Stat label="Pesanan dibatalkan dengan dana diterima" value={d.refundCandidates} href="/admin/pembayaran" /> : null}
@@ -99,7 +99,7 @@ export default async function AdminDashboardPage() {
         <h2 id="status-pesanan" className="text-xl">
           Pesanan per Status
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:grid-cols-6">
           {(Object.keys(d.byStatus) as Array<keyof typeof d.byStatus>).map((s) => (
             <Stat key={s} label={ORDER_STATUS_LABEL[s]} value={d.byStatus[s]} href={`/admin/pesanan?status=${s}`} testId={`stat-status-${s}`} />
           ))}
@@ -159,7 +159,7 @@ export default async function AdminDashboardPage() {
         <h2 id="pendapatan" className="text-xl">
           Ringkasan Pendapatan
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
           <Stat label="Total pembayaran diterima (setelah refund)" value={formatRupiah(d.revenue.receivedTotal)} testId="stat-received" />
           <Stat label="Diterima bulan ini" value={formatRupiah(d.revenue.receivedThisMonth)} />
           <Stat label={`Sisa pembayaran (${d.revenue.outstandingOrders} pesanan aktif)`} value={formatRupiah(d.revenue.outstandingTotal)} />

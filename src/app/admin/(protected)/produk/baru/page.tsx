@@ -19,7 +19,7 @@ export default async function NewProductPage() {
       <Link href="/admin/produk" className="self-start underline underline-offset-4">
         ← Semua produk
       </Link>
-      <h1 className="text-3xl">Tambah Produk</h1>
+      <h1 className="text-2xl sm:text-3xl">Tambah Produk</h1>
       {categories.length === 0 ? (
         <p className="rounded-card bg-surface p-6">
           Belum ada kategori. <Link href="/admin/kategori" className="font-semibold text-primary underline underline-offset-4">Buat kategori</Link> terlebih dahulu.

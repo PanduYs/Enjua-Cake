@@ -39,7 +39,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
   return (
     <section className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl">Produk</h1>
+        <h1 className="text-2xl sm:text-3xl">Produk</h1>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin/kategori" className="inline-flex min-h-11 items-center rounded-control border border-primary px-4 font-semibold text-primary">
             Kelola Kategori

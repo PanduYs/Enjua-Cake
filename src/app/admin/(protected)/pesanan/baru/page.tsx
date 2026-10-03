@@ -19,7 +19,7 @@ export default async function ManualOrderPage() {
         ← Semua pesanan
       </Link>
       <div>
-        <h1 className="text-3xl">Manual Order</h1>
+        <h1 className="text-2xl sm:text-3xl">Manual Order</h1>
         <p className="text-muted-foreground">Catat pesanan dari WhatsApp atau offline. Memakai validasi dan kapasitas yang sama dengan pesanan website.</p>
       </div>
       {products.length === 0 ? (

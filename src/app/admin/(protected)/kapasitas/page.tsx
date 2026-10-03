@@ -36,7 +36,7 @@ export default async function AdminCapacityPage({ searchParams }: { searchParams
   return (
     <section className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl">Kapasitas Pickup</h1>
+        <h1 className="text-2xl sm:text-3xl">Kapasitas Pickup</h1>
         <p className="text-sm text-muted-foreground">
           Kapasitas default {defaultCapacity} pesanan per tanggal, booking horizon {horizonDays} hari (ubah di{" "}
           <Link href="/admin/pengaturan" className="underline underline-offset-4">
@@ -60,28 +60,28 @@ export default async function AdminCapacityPage({ searchParams }: { searchParams
         </Link>
       </nav>
 
-      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Kapasitas per tanggal">
+      <ul className="grid gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Kapasitas per tanggal">
         {rows.map((r) => (
-          <li key={r.date} className="flex flex-col gap-3 rounded-card bg-surface p-4" data-testid={`capacity-${r.date}`}>
+          <li key={r.date} className="flex flex-col gap-1.5 rounded-card bg-surface px-3 pt-3 pb-1 sm:gap-3 sm:p-4" data-testid={`capacity-${r.date}`}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <h2 className="text-base font-semibold">{formatIsoDateLong(parseIsoDate(r.date))}</h2>
               <span className={`rounded-full px-3 py-0.5 text-sm font-semibold ${STATUS_CLASS[r.status]}`}>{CAPACITY_STATUS_LABEL[r.status]}</span>
             </div>
-            <dl className="grid grid-cols-3 gap-2 text-center text-sm">
+            <dl className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
               <div>
                 <dt className="text-muted-foreground">Kapasitas</dt>
-                <dd className="text-lg font-semibold">
+                <dd className="text-base font-semibold sm:text-lg">
                   {r.capacity}
                   {r.capacityOverride !== null ? <span className="sr-only"> (override)</span> : null}
                 </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Terisi</dt>
-                <dd className="text-lg font-semibold">{r.used}</dd>
+                <dd className="text-base font-semibold sm:text-lg">{r.used}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Sisa</dt>
-                <dd className="text-lg font-semibold">{r.remaining}</dd>
+                <dd className="text-base font-semibold sm:text-lg">{r.remaining}</dd>
               </div>
             </dl>
             {r.capacityOverride !== null ? <p className="text-xs text-muted-foreground">Override kapasitas (default {defaultCapacity}).</p> : null}

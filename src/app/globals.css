@@ -104,3 +104,84 @@
   text-decoration: line-through;
   background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted-foreground) 22%, transparent) 5px 6px);
 }
+
+/* ---------- Motion (subtle; prefers-reduced-motion handled below and by the base rule) ---------- */
+
+@keyframes enjua-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.9rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes enjua-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes enjua-drawer-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -0.5rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mobile drawer: fades/slides in when opened (closing is instant via [hidden]). */
+.enjua-drawer:not([hidden]) {
+  animation: enjua-drawer-in 200ms ease-out both;
+}
+
+/* Hero entrance, staggered by --enjua-delay. */
+.enjua-rise {
+  animation: enjua-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--enjua-delay, 0ms);
+}
+
+.enjua-hero-image {
+  animation: enjua-fade 900ms ease-out both;
+}
+
+/* Horizontal snap rails (categories, order steps on phones): swipe, no visible scrollbar. */
+.enjua-rail {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.enjua-rail::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enjua-parallax {
+    transform: none !important;
+  }
+}
+
+/* Hero height: present but never a full screen of scrolling (svh with vh fallback). */
+.enjua-hero {
+  min-height: clamp(30rem, 74vh, 38rem);
+  min-height: clamp(30rem, 74svh, 38rem);
+}
+@media (min-width: 768px) {
+  .enjua-hero {
+    min-height: clamp(28rem, 62vh, 36rem);
+    min-height: clamp(28rem, 62svh, 36rem);
+  }
+}
+@media (min-width: 1024px) {
+  .enjua-hero {
+    min-height: clamp(32rem, 78vh, 46rem);
+    min-height: clamp(32rem, 78svh, 46rem);
+  }
+}

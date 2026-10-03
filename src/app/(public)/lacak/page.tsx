@@ -35,8 +35,8 @@ export default async function TrackingPage() {
   const clientPayment = payment ? { ...payment, activeQris: payment.activeQris ? { ...payment.activeQris, qrString: "" } : null } : null;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10 sm:py-14">
-      <h1 className="text-4xl sm:text-5xl">Lacak Pesanan</h1>
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-7 sm:py-14">
+      <h1 className="text-[2rem] sm:text-5xl">Lacak Pesanan</h1>
       {view ? (
         <>
           <TrackingLinkHandler />

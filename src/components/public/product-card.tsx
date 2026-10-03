@@ -25,12 +25,12 @@ export interface ProductCardData {
 export function ProductCard({ product, headingLevel = 3 }: { product: ProductCardData; headingLevel?: 2 | 3 }) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-card bg-surface shadow-sm transition-shadow hover:shadow-md">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-card bg-surface shadow-sm transition duration-300 hover:shadow-md motion-safe:hover:-translate-y-0.5">
       <div className="relative">
         <ProductImage
           image={product.mainImage}
-          sizes="(min-width: 1280px) 22vw, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-          className="transition-transform duration-300 motion-safe:group-hover:scale-[1.03]"
+          sizes="(min-width: 1280px) 22vw, (min-width: 768px) 25vw, (min-width: 640px) 33vw, 50vw"
+          className="transition-transform duration-500 motion-safe:group-hover:scale-[1.04]"
         />
         <ProductBadges productType={product.productType} soldOut={product.soldOut} className="absolute left-2 top-2" />
       </div>
@@ -66,7 +66,7 @@ export function ProductCard({ product, headingLevel = 3 }: { product: ProductCar
 
 export function ProductGrid({ products, headingLevel = 3 }: { products: ProductCardData[]; headingLevel?: 2 | 3 }) {
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:gap-5">
       {products.map((product) => (
         <li key={product.slug} className="has-[a:focus-visible]:rounded-card has-[a:focus-visible]:outline-3 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-focus">
           <ProductCard product={product} headingLevel={headingLevel} />

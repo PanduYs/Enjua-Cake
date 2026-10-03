@@ -26,8 +26,8 @@ export default async function CatalogPage({ searchParams }: { searchParams: Sear
   const chips = [{ slug: null, name: "Semua" }, ...categories.map((c) => ({ slug: c.slug, name: c.name }))];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
-      <h1 className="text-4xl sm:text-5xl">{activeCategory ? activeCategory.name : "Produk"}</h1>
+    <div className="mx-auto max-w-6xl px-4 py-7 sm:py-14">
+      <h1 className="text-[2rem] sm:text-5xl">{activeCategory ? activeCategory.name : "Produk"}</h1>
       {activeCategory?.description ? <p className="mt-2 max-w-2xl text-muted-foreground">{activeCategory.description}</p> : null}
 
       {categories.length > 0 ? (

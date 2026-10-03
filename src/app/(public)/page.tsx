@@ -1,12 +1,11 @@
-import Image from "next/image";
 import Link from "next/link";
 
-import { BrushEdge } from "@/components/public/brush-edge";
 import { CategoryCards } from "@/components/public/category-cards";
-import { CakeIcon, ChatIcon, ClockIcon, PinIcon } from "@/components/public/icons";
+import { ChatIcon, ClockIcon, PinIcon } from "@/components/public/icons";
+import { HomeHero } from "@/components/public/home-hero";
 import { ProductGrid } from "@/components/public/product-card";
 import { SectionHeading } from "@/components/public/section-heading";
-import { heroCopy } from "@/lib/copy/public";
+import { availableHeroAssets } from "@/server/hero-assets";
 import { categoryFallbackImages, listActiveCategories, listProducts } from "@/server/services/catalog";
 
 import { loadSite } from "./_lib/site";
@@ -27,60 +26,25 @@ export default async function HomePage() {
     categories.filter((c) => !c.image).map((c) => c.id),
   );
   const categoryCards = categories.map((c) => ({ ...c, image: c.image ?? fallbackImages.get(c.id) ?? null }));
-  const heroImage = featured.find((p) => p.mainImage)?.mainImage ?? null;
 
   return (
     <>
-      {/* Hero — split layout on mauve with an organic edge (PRD-Design §9). */}
-      <section aria-labelledby="hero-title" className="text-accent">
-        <div className="bg-accent text-accent-foreground">
-          <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-12 sm:py-16 lg:grid-cols-2 lg:py-20">
-            <div className="flex flex-col gap-5">
-              <h1 id="hero-title" className="text-4xl leading-tight sm:text-5xl lg:text-6xl">
-                {heroCopy.headline}
-              </h1>
-              <p className="max-w-xl text-lg">{heroCopy.supporting}</p>
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  href="/produk"
-                  className="inline-flex min-h-12 items-center rounded-full bg-primary px-6 font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  {heroCopy.primaryCta}
-                </Link>
-                <Link
-                  href="/produk"
-                  className="inline-flex min-h-12 items-center rounded-full border-2 border-accent-foreground px-6 font-semibold text-accent-foreground hover:bg-accent-foreground/10"
-                >
-                  {heroCopy.secondaryCta}
-                </Link>
-              </div>
-            </div>
-            <div className="relative mx-auto aspect-square w-full max-w-md">
-              {heroImage ? (
-                <Image
-                  src={heroImage.url}
-                  alt={heroImage.alt}
-                  fill
-                  priority
-                  sizes="(min-width: 1024px) 40vw, 90vw"
-                  className="rounded-full object-cover shadow-xl"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-full bg-accent-soft/40" aria-hidden="true">
-                  <CakeIcon width={120} height={120} />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <BrushEdge position="bottom" />
-      </section>
+      <HomeHero images={availableHeroAssets()} />
 
       {featured.length > 0 ? (
-        <section aria-labelledby="produk-unggulan" className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
-          <SectionHeading id="produk-unggulan" title="Produk Unggulan" subtitle="Pilihan favorit dari dapur kami." />
+        <section aria-labelledby="produk-unggulan" className="mx-auto max-w-6xl px-4 pt-8 pb-10 sm:pt-12 sm:pb-14">
+          <SectionHeading
+            id="produk-unggulan"
+            title="Produk Unggulan"
+            subtitle="Pilihan favorit dari dapur kami."
+            action={
+              <Link href="/produk" className="hidden shrink-0 pb-0.5 text-sm font-semibold text-primary underline underline-offset-4 sm:inline">
+                Lihat semua produk
+              </Link>
+            }
+          />
           <ProductGrid products={featured} />
-          <div className="mt-8 text-center">
+          <div className="mt-6 text-center sm:hidden">
             <Link href="/produk" className="inline-flex min-h-11 items-center rounded-full border-2 border-primary px-6 font-semibold text-primary">
               Lihat semua produk
             </Link>
@@ -89,56 +53,60 @@ export default async function HomePage() {
       ) : null}
 
       {categoryCards.length > 0 ? (
-        <section aria-labelledby="kategori" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 sm:py-16">
-          <SectionHeading id="kategori" title="Kategori" subtitle="Temukan kue sesuai kebutuhanmu." />
-          <CategoryCards categories={categoryCards} />
+        <section aria-labelledby="kategori" className="scroll-mt-20 bg-surface-muted/70">
+          <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
+            <SectionHeading id="kategori" title="Kategori" subtitle="Temukan kue sesuai kebutuhanmu." />
+            <CategoryCards categories={categoryCards} />
+          </div>
         </section>
       ) : null}
 
-      <section aria-labelledby="tentang-kami" className="scroll-mt-20 bg-surface-muted">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
-          <SectionHeading id="tentang-kami" title="Tentang Kami" />
-          <p className="max-w-3xl text-lg">
-            {settings.business_description ?? `Cerita tentang ${settings.business_name} akan segera hadir.`}
-          </p>
-        </div>
-      </section>
-
-      <section aria-labelledby="cara-pesan" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 sm:py-16">
+      <section aria-labelledby="cara-pesan" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-10 sm:py-14">
         <SectionHeading id="cara-pesan" title="Cara Pesan" subtitle="Semua pesanan diambil langsung di toko (pickup)." />
-        <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Phones: a swipeable journey; tablets/desktops: one row joined by a line. */}
+        {/* tabIndex: on phones the rail scrolls but holds no links, so keyboard users need to focus it to scroll. */}
+        <ol
+          tabIndex={0}
+          aria-label="Langkah pemesanan"
+          className="enjua-rail -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 md:mx-0 md:grid md:grid-cols-5 md:gap-4 md:overflow-visible md:px-0 md:pb-0 focus-visible:outline-offset-[-3px]"
+        >
           {ORDER_STEPS.map((step, index) => (
-            <li key={step.title} className="flex flex-col gap-2 rounded-card bg-surface p-5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground" aria-hidden="true">
-                {index + 1}
-              </span>
-              <h3 className="text-lg">{step.title}</h3>
-              <p className="text-sm text-muted-foreground">{step.text}</p>
+            <li key={step.title} className="relative w-[70%] max-w-[16rem] shrink-0 snap-start md:w-auto md:max-w-none">
+              {index < ORDER_STEPS.length - 1 ? (
+                <span aria-hidden="true" className="absolute top-[1.375rem] left-[calc(50%+1.75rem)] hidden h-px w-[calc(100%-2.5rem)] bg-accent-soft md:block" />
+              ) : null}
+              <div className="flex h-full flex-col gap-1.5 rounded-card bg-surface p-4 md:items-center md:bg-transparent md:p-0 md:text-center">
+                <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-primary font-heading text-lg text-primary-foreground" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <h3 className="mt-1 text-lg">{step.title}</h3>
+                <p className="text-sm text-muted-foreground">{step.text}</p>
+              </div>
             </li>
           ))}
         </ol>
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <div className="rounded-card bg-badge-ready p-5">
-            <h3 className="text-xl">Ready Stock</h3>
-            <p className="mt-2 text-sm">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:gap-4">
+          <div className="rounded-card bg-badge-ready p-4 sm:p-5">
+            <h3 className="text-lg sm:text-xl">Ready Stock</h3>
+            <p className="mt-1 text-sm">
               Bisa diambil di hari yang sama bila dipesan sebelum pukul {settings.pickup_cutoff} WIB dan kuota tanggal tersebut masih tersedia.
             </p>
           </div>
-          <div className="rounded-card bg-badge-preorder p-5">
-            <h3 className="text-xl">Pre-Order</h3>
-            <p className="mt-2 text-sm">
+          <div className="rounded-card bg-badge-preorder p-4 sm:p-5">
+            <h3 className="text-lg sm:text-xl">Pre-Order</h3>
+            <p className="mt-1 text-sm">
               Dibuat khusus untukmu. Setiap produk punya waktu minimum produksi, jadi pilih tanggal pickup yang memenuhi waktu tersebut.
             </p>
           </div>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">Setiap tanggal pickup memiliki kuota pesanan terbatas.</p>
+        <p className="mt-3 text-sm text-muted-foreground">Setiap tanggal pickup memiliki kuota pesanan terbatas.</p>
       </section>
 
-      <section aria-labelledby="kontak" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 sm:py-16">
+      <section aria-labelledby="kontak" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-2 pb-10 sm:pb-14">
         <SectionHeading id="kontak" title="Kontak" />
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {settings.address ? (
-            <div className="flex gap-3 rounded-card bg-surface p-5">
+            <div className="flex gap-3 rounded-card bg-surface p-4 sm:p-5">
               <PinIcon className="shrink-0 text-primary" />
               <div>
                 <h3 className="text-lg">Alamat pickup</h3>
@@ -148,7 +116,7 @@ export default async function HomePage() {
             </div>
           ) : null}
           {settings.pickup_hours || settings.operating_hours ? (
-            <div className="flex gap-3 rounded-card bg-surface p-5">
+            <div className="flex gap-3 rounded-card bg-surface p-4 sm:p-5">
               <ClockIcon className="shrink-0 text-primary" />
               <div>
                 <h3 className="text-lg">Jam</h3>
@@ -158,7 +126,7 @@ export default async function HomePage() {
             </div>
           ) : null}
           {whatsAppHref ? (
-            <div className="flex gap-3 rounded-card bg-surface p-5">
+            <div className="flex gap-3 rounded-card bg-surface p-4 sm:p-5">
               <ChatIcon className="shrink-0 text-primary" />
               <div>
                 <h3 className="text-lg">WhatsApp</h3>

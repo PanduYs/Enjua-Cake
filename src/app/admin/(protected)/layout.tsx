@@ -14,8 +14,8 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
   return (
     <div className="min-h-dvh">
       <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <Link href="/admin" className="font-heading text-xl">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2 sm:py-3">
+          <Link href="/admin" className="font-heading text-lg sm:text-xl">
             Enjua Cake&apos;s · Admin
           </Link>
           <div className="flex items-center gap-3">
@@ -27,11 +27,11 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
             </form>
           </div>
         </div>
-        <nav aria-label="Navigasi admin" className="mx-auto max-w-6xl px-4 pb-3">
+        <nav aria-label="Navigasi admin" className="mx-auto max-w-6xl px-4 pb-2 sm:pb-3">
           <AdminNavLinks />
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-5 sm:py-8">{children}</main>
     </div>
   );
 }

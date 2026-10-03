@@ -21,7 +21,7 @@ export default async function AdminCategoriesPage() {
       <Link href="/admin/produk" className="self-start underline underline-offset-4">
         ← Produk
       </Link>
-      <h1 className="text-3xl">Kategori</h1>
+      <h1 className="text-2xl sm:text-3xl">Kategori</h1>
 
       {rows.length === 0 ? <p className="rounded-card bg-surface p-6 text-muted-foreground">Belum ada kategori.</p> : null}
       <ul className="flex flex-col gap-3" aria-label="Daftar kategori">

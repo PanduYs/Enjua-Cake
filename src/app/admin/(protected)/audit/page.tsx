@@ -41,7 +41,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   return (
     <section className="flex flex-col gap-6">
-      <h1 className="text-3xl">Audit Log</h1>
+      <h1 className="text-2xl sm:text-3xl">Audit Log</h1>
       <form method="get" className="flex flex-wrap items-end gap-3 rounded-card bg-surface p-4" aria-label="Filter audit log">
         <div className="flex flex-col gap-1">
           <label htmlFor="audit-jenis" className="text-sm font-semibold">

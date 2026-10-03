@@ -1,10 +1,15 @@
-export function SectionHeading({ id, title, subtitle }: { id: string; title: string; subtitle?: string }) {
+import type { ReactNode } from "react";
+
+export function SectionHeading({ id, title, subtitle, action }: { id: string; title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-2 sm:mb-8">
-      <h2 id={id} className="text-3xl sm:text-4xl">
-        {title}
-      </h2>
-      {subtitle ? <p className="max-w-2xl text-muted-foreground">{subtitle}</p> : null}
+    <div className="mb-5 flex items-end justify-between gap-4 sm:mb-8">
+      <div className="flex flex-col gap-1.5">
+        <h2 id={id} className="text-[1.75rem] sm:text-4xl">
+          {title}
+        </h2>
+        {subtitle ? <p className="max-w-2xl text-muted-foreground">{subtitle}</p> : null}
+      </div>
+      {action}
     </div>
   );
 }

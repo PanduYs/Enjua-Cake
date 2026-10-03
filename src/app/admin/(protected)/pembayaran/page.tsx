@@ -20,7 +20,7 @@ export default async function AdminPaymentsPage() {
 
   return (
     <section className="flex flex-col gap-6">
-      <h1 className="text-3xl">Pembayaran</h1>
+      <h1 className="text-2xl sm:text-3xl">Pembayaran</h1>
 
       <section aria-labelledby="verifikasi" className="rounded-card bg-surface p-5 text-sm">
         <h2 id="verifikasi" className="mb-3 text-xl">

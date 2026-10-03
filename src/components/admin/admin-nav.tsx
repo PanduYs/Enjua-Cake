@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 export const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -20,15 +21,25 @@ function isCurrent(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Admin modules (PRD §30.1). Wraps on small screens; every item is a ≥44 px target. */
+/**
+ * Admin modules (PRD §30.1). Phones: one swipeable row (the current module scrolled into
+ * view) instead of three wrapped rows; wider screens wrap. Every item is a ≥44 px target.
+ */
 export function AdminNavLinks() {
   const pathname = usePathname();
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const list = listRef.current;
+    const current = list?.querySelector<HTMLElement>("[aria-current=page]");
+    if (!list || !current || list.scrollWidth <= list.clientWidth) return;
+    list.scrollLeft = current.offsetLeft - (list.clientWidth - current.offsetWidth) / 2;
+  }, [pathname]);
   return (
-    <ul className="flex flex-wrap gap-1">
+    <ul ref={listRef} className="enjua-rail -mx-4 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
       {ADMIN_NAV.map((item) => {
         const current = isCurrent(pathname, item.href);
         return (
-          <li key={item.href}>
+          <li key={item.href} className="shrink-0">
             <Link
               href={item.href}
               aria-current={current ? "page" : undefined}

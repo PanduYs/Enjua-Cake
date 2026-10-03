@@ -31,7 +31,7 @@ export default async function EditProductPage({ params, searchParams }: { params
         ← Semua produk
       </Link>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-3xl">{product.name}</h1>
+        <h1 className="text-2xl sm:text-3xl">{product.name}</h1>
         {product.isActive ? (
           <Link href={`/produk/${product.slug}`} className="text-sm underline underline-offset-4" target="_blank">
             Lihat di website

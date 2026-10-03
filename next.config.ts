@@ -10,6 +10,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Self-hosted container builds (TD-17 Opsi B) set NEXT_OUTPUT=standalone; managed hosting leaves it unset.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   // Resolve <title>/meta before streaming the body for every client, so assistive
   // technology always finds the page title on load (metadata here is static and cheap).
   htmlLimitedBots: /.*/,

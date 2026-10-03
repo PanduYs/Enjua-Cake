@@ -19,11 +19,18 @@
     "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
     "db:seed-admin": "tsx --conditions=react-server scripts/seed-admin.ts",
     "db:seed-sample": "tsx --conditions=react-server scripts/seed-sample-catalog.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:check-migrations": "tsx scripts/check-migrations.ts",
+    "preflight": "tsx scripts/preflight.ts",
+    "check:go-live": "tsx --conditions=react-server scripts/check-go-live.ts",
+    "admin": "tsx --conditions=react-server scripts/admin-cli.ts",
+    "payments:reconcile": "tsx --conditions=react-server scripts/reconcile-payments.ts",
+    "midtrans:smoke": "tsx --conditions=react-server scripts/midtrans-sandbox-smoke.ts"
   },
   "dependencies": {
     "@date-fns/tz": "1.5.0",
     "@node-rs/argon2": "2.2.1",
+    "aws4fetch": "1.0.20",
     "better-auth": "1.7.7",
     "date-fns": "4.4.0",
     "drizzle-orm": "0.45.3",

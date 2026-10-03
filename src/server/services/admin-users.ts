@@ -86,3 +86,21 @@ export async function resetAdminPassword(db: Database, args: { targetId: string;
     return { ok: true } as const;
   });
 }
+
+/**
+ * Server-side recovery (§8.1): sets a password by email from the admin CLI when no
+ * other admin can do it. Ends every session of that admin; audited as SYSTEM.
+ */
+export async function resetAdminPasswordByEmail(db: Database, args: { email: string; raw: unknown }): Promise<{ ok: true } | Fail> {
+  const parsed = resetPasswordSchema.safeParse(args.raw);
+  if (!parsed.success) return { ok: false, error: "INVALID_INPUT", fieldErrors: fieldErrorsOf(parsed.error) };
+  const [target] = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, args.email.trim().toLowerCase())).limit(1);
+  if (!target) return { ok: false, error: "NOT_FOUND" };
+  const hash = await hashPassword(parsed.data.password);
+  await db.transaction(async (tx) => {
+    await tx.update(adminAccounts).set({ password: hash, updatedAt: new Date() }).where(and(eq(adminAccounts.userId, target.id), eq(adminAccounts.providerId, "credential")));
+    await tx.delete(adminSessions).where(eq(adminSessions.userId, target.id));
+    await writeAudit(tx, { entityType: "admin", entityId: target.id, eventType: "ADMIN_PASSWORD_RESET", newValue: { sessionsRevoked: true, via: "cli" }, actor: { type: "SYSTEM" } });
+  });
+  return { ok: true };
+}

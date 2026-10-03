@@ -1,0 +1,32 @@
+# EXAMPLE for TD-17 Opsi B (single VPS). Copy, review, and keep secrets in
+# .env.production on the server (never in Git). Add a TLS reverse proxy (e.g.
+# Caddy/Nginx) in front of `app`, and a host cron for the sweeper (docs/DEPLOYMENT.md).
+services:
+  app:
+    image: enjua-cake:runner
+    build: { context: ., target: runner }
+    env_file: .env.production
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db: { condition: service_healthy }
+  migrate:
+    image: enjua-cake:tools
+    build: { context: ., target: tools }
+    env_file: .env.production
+    profiles: ["tools"]
+    depends_on:
+      db: { condition: service_healthy }
+  db:
+    image: postgres:16
+    env_file: .env.production.db
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+volumes:
+  pgdata:

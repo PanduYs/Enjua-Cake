@@ -2,7 +2,8 @@ import { getStorage } from "@/server/storage";
 import { isStorageKeyError } from "@/server/storage/types";
 
 /**
- * Serves the PUBLIC bucket for the local storage driver (product/category images).
+ * Serves the PUBLIC bucket (product/category images) for every storage driver, so image
+ * URLs stay same-origin (CSP img-src 'self') whether files live on disk or in S3.
  * Private objects (payment proofs) are never reachable here (FD-51).
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ key: string[] }> }) {
@@ -21,6 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
     });
   } catch (error) {
     if (isStorageKeyError(error)) return new Response("Not found", { status: 404 });
+    if (error instanceof Error && error.name === "StorageUnavailableError") return new Response("Storage unavailable", { status: 503, headers: { "retry-after": "30" } });
     throw error;
   }
 }

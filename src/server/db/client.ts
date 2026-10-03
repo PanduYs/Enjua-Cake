@@ -31,7 +31,9 @@ const globalForDb = globalThis as unknown as { __enjuaDb?: DatabaseHandle };
 /** Process-wide database handle, reused across hot reloads in development. */
 export function getDb(): Database {
   if (!globalForDb.__enjuaDb) {
-    globalForDb.__enjuaDb = createDatabase(getEnv().DATABASE_URL);
+    const env = getEnv();
+    // prepare:false (above) keeps this compatible with transaction-mode poolers (e.g. Supabase/PgBouncer).
+    globalForDb.__enjuaDb = createDatabase(env.DATABASE_URL, { max: env.DATABASE_POOL_MAX });
   }
   return globalForDb.__enjuaDb.db;
 }

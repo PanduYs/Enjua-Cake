@@ -122,6 +122,13 @@ test.describe("HTTP hardening (plan §30)", () => {
     await expect(page).toHaveURL(/#konten$/);
   });
 
+  test("health endpoint reports readiness without revealing configuration", async ({ request }) => {
+    const res = await request.get("/api/health");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["cache-control"]).toContain("no-store");
+    expect(await res.json()).toEqual({ ok: true, database: "ok" });
+  });
+
   test("unknown routes and errors show friendly Indonesian messages without technical details", async ({ request }) => {
     const res = await request.get("/halaman-yang-tidak-ada");
     expect(res.status()).toBe(404);

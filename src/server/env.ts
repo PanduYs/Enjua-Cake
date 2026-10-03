@@ -14,8 +14,17 @@ const envSchema = z.object({
   ALLOW_MOCK_PAYMENTS: z.enum(["true", "false"]).default("false"),
   /** Midtrans server key for the environment in PAYMENT_ENV (sandbox key for development/staging). */
   MIDTRANS_SERVER_KEY: z.string().min(1).optional(),
-  STORAGE_DRIVER: z.enum(["local"]).default("local"),
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().min(1).default(".storage"),
+  /** S3-compatible object storage (TD-16): required when STORAGE_DRIVER=s3. */
+  STORAGE_ENDPOINT: z.url().optional(),
+  STORAGE_REGION: z.string().min(1).optional(),
+  STORAGE_ACCESS_KEY_ID: z.string().min(1).optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  STORAGE_PUBLIC_BUCKET: z.string().min(1).optional(),
+  STORAGE_PRIVATE_BUCKET: z.string().min(1).optional(),
+  /** Connection pool size per server instance (serverless: keep small and use the provider's pooler). */
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   CRON_SECRET: z.string().min(16).optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
@@ -42,6 +51,12 @@ export function getEnv(): Env {
     // production build refuses it unless explicitly allowed (E2E / staging UAT).
     if (parsed.data.NODE_ENV === "production" && parsed.data.PAYMENT_PROVIDER === "mock" && parsed.data.ALLOW_MOCK_PAYMENTS !== "true") {
       throw new Error("PAYMENT_PROVIDER=mock in a production build requires ALLOW_MOCK_PAYMENTS=true (never on the live site)");
+    }
+    if (parsed.data.STORAGE_DRIVER === "s3") {
+      const missing = (["STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_ACCESS_KEY_ID", "STORAGE_SECRET_ACCESS_KEY", "STORAGE_PUBLIC_BUCKET", "STORAGE_PRIVATE_BUCKET"] as const).filter(
+        (key) => !parsed.data[key],
+      );
+      if (missing.length) throw new Error(`STORAGE_DRIVER=s3 requires: ${missing.join(", ")}`);
     }
     if (parsed.data.PAYMENT_PROVIDER === "midtrans" && !parsed.data.MIDTRANS_SERVER_KEY) {
       throw new Error("MIDTRANS_SERVER_KEY is required when PAYMENT_PROVIDER=midtrans");

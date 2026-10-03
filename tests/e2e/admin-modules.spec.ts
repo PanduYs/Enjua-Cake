@@ -111,15 +111,22 @@ test("products & categories: create with photo, publish, Sold Out, deactivate, d
   await expect(visitor.getByRole("heading", { level: 1, name: "Produk Uji Admin" })).toBeVisible();
   await expect(visitor.getByRole("img", { name: "Kue uji di atas piring" }).first()).toBeVisible();
 
+  // The form keeps the previous "Produk disimpan." while a new save is pending, so the message alone
+  // cannot tell two saves apart. The Server Action response arrives only after the save has committed.
+  const saveProduct = async () => {
+    const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
+    await page.getByRole("button", { name: "Simpan Perubahan" }).click();
+    expect((await saved).ok()).toBe(true);
+    await expect(page.getByText("Produk disimpan.")).toBeVisible();
+  };
+
   await page.getByLabel("Availability").selectOption("SOLD_OUT");
-  await page.getByRole("button", { name: "Simpan Perubahan" }).click();
-  await expect(page.getByText("Produk disimpan.")).toBeVisible();
+  await saveProduct();
   await visitor.reload();
   await expect(visitor.getByText("Sold Out").first()).toBeVisible();
 
   await page.getByLabel("Aktif (tampil di website)").uncheck();
-  await page.getByRole("button", { name: "Simpan Perubahan" }).click();
-  await expect(page.getByText("Produk disimpan.")).toBeVisible();
+  await saveProduct();
   const hidden = await visitor.goto("/produk/produk-uji-admin");
   expect(hidden?.status()).toBe(404);
 

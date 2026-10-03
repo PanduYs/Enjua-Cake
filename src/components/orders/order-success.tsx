@@ -109,7 +109,12 @@ export function OrderSuccess({ whatsappNumber, businessName }: { whatsappNumber:
               {order.reservationExpiresAt ? <> sebelum {formatTime(order.reservationExpiresAt)} WIB</> : null}. Jika lewat batas waktu, pesanan dibatalkan
               otomatis.
             </p>
-            <p className="text-muted-foreground">Lanjutkan pembayaran melalui tombol Pantau status pesanan dan pembayaran di halaman lacak pesanan.ldquo;Lacak Pesanan SekarangPantau status pesanan dan pembayaran di halaman lacak pesanan.rdquo; di atas.</p>
+            <p className="text-muted-foreground" data-testid="payment-next-step">
+              {order.paymentMethod === "QRIS"
+                ? "Tekan \u201cLacak Pesanan Sekarang\u201d di atas, lalu \u201cTampilkan QRIS\u201d untuk memindai kode pembayaran."
+                : "Tekan \u201cLacak Pesanan Sekarang\u201d di atas untuk melihat rekening tujuan dan mengunggah bukti transfer."}{" "}
+              Status pesanan dan pembayaran dapat dipantau di halaman lacak pesanan.
+            </p>
           </>
         )}
       </section>

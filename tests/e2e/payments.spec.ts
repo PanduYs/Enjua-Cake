@@ -16,6 +16,34 @@ async function openAdminOrder(page: Page, orderNumber: string) {
 }
 
 test.describe("payments (Phase 5, MockProvider)", () => {
+  for (const c of [
+    { method: "QRIS", option: "Bayar Penuh", due: "Rp225.000", step: "Tekan \u201cLacak Pesanan Sekarang\u201d di atas, lalu \u201cTampilkan QRIS\u201d untuk memindai kode pembayaran." },
+    { method: "Transfer Bank", option: "Bayar DP 50%", due: "Rp112.500", step: "Tekan \u201cLacak Pesanan Sekarang\u201d di atas untuk melihat rekening tujuan dan mengunggah bukti transfer." },
+  ] as const) {
+    test(`${c.method} ${c.option}: the success page says how to pay; the tracking page shows the payment details`, async ({ page }) => {
+      await createOrderViaUi(page, { customerName: `Pelanggan ${c.method}`, slug: "contoh-cheesecake-stroberi", quantity: 1, method: c.method, option: c.option });
+      const step = page.getByTestId("payment-next-step");
+      await expect(step).toContainText(c.step);
+      await expect(page.getByText(`Lakukan pembayaran ${c.due} melalui ${c.method}`)).toBeVisible();
+      await expect(page.locator("main")).not.toContainText(/ldquo|rdquo/);
+
+      await page.getByRole("link", { name: "Lacak Pesanan Sekarang" }).click();
+      const panel = page.getByRole("region", { name: "Lakukan Pembayaran" });
+      if (c.method === "QRIS") {
+        await panel.getByRole("button", { name: "Tampilkan QRIS" }).click();
+        await expect(panel.getByTestId("qris-image")).toHaveAttribute("src", /^data:image\/png;base64,/);
+        await expect(panel.getByText(`Pembayaran Penuh: ${c.due}`)).toBeVisible();
+      } else {
+        await expect(panel).toContainText(`Transfer ${c.due} (DP 50%) ke rekening berikut`);
+        // The fictitious E2E account from Website Settings (seed --e2e), with a copy action.
+        await expect(panel).toContainText("Bank Contoh (E2E) · 0000000000 · a.n. Data Uji E2E");
+        await expect(panel.getByRole("button", { name: "Salin nomor rekening Bank Contoh (E2E)" })).toBeVisible();
+        await expect(panel.getByText("Unggah bukti transfer").first()).toBeVisible();
+        await expect(panel.getByRole("button", { name: "Tampilkan QRIS" })).toHaveCount(0);
+      }
+    });
+  }
+
   test("QRIS DP: show QR → verified payment confirms the order → remaining via QRIS → Lunas", async ({ page }) => {
     const { orderNumber, token } = await createOrderViaUi(page, {
       customerName: "Pelanggan QRIS",

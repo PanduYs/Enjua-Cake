@@ -20,7 +20,7 @@ export async function validateCartAction(lines: unknown) {
 
 export async function pickupAvailabilityAction(lines: unknown) {
   const result = await getPickupAvailability(deps(), lines);
-  return { cutoff: result.cutoff, earliestDate: result.window.earliestDate, latestDate: result.window.latestDate, today: result.window.today, dates: result.dates };
+  return { cutoff: result.cutoff, earliestDate: result.window.earliestDate, latestDate: result.window.latestDate, today: result.window.today, hasPreorder: result.window.hasPreorder, dates: result.dates };
 }
 
 export async function previewCheckoutAction(input: unknown) {

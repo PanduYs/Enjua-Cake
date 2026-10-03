@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Clock } from "@/server/clock";
@@ -61,15 +61,10 @@ export async function placeManualOrder(
   // Products, quantities, Sold Out/inactive, Cash for Pre-Order, DP rules: never overridable.
   const prepared = await prepareCheckout({ ...deps, clock: fixedClock }, input);
   if (!prepared.ok) return { ok: false, code: "CHECKOUT_INVALID", fieldErrors: prepared.fieldErrors, cartIssues: prepared.cartIssues };
-  const { summary } = prepared;
+  const { summary, productFacts } = prepared;
 
   const settings = await getSettings(deps.db);
-  const productRows = await deps.db
-    .select({ id: products.id, price: products.price, salePrice: products.salePrice, productType: products.productType, minimumPreorderDays: products.minimumPreorderDays })
-    .from(products)
-    .where(inArray(products.id, summary.lines.map((l) => l.productId)));
-  const productFacts = new Map(productRows.map((p) => [p.id, p]));
-  const minDays = maxPreorderDays(productRows);
+  const minDays = maxPreorderDays([...productFacts.values()]);
   const window = pickupWindow({ now, cutoff: settings.pickup_cutoff, bookingHorizonDays: settings.booking_horizon_days, maxPreorderDays: minDays });
   const granted = new Map(overrides.data.filter((o) => o.reason.length > 0).map((o) => [o.type, o.reason]));
 

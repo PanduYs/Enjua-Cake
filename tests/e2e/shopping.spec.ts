@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { addProductToCart, clickDayWithStatus } from "./helpers";
+import { addProductToCart, clickDayWithStatus, clickDayWithStatusFromStart, tamperPlaceOrderPickupDate, wibIsoDate } from "./helpers";
 
 test.describe("Keranjang", () => {
   test("add from detail, persists across reload, change quantity, remove", async ({ page }) => {
@@ -94,6 +94,76 @@ test.describe("Checkout", () => {
     await confirm.getByRole("button", { name: "Ubah Data" }).click();
     await expect(page.getByLabel("Nama")).toHaveValue("Pelanggan E2E");
   });
+
+  test("Ready Stock: choosing an unavailable date after a valid one clears the choice and blocks checkout", async ({ page }) => {
+    await addProductToCart(page, "contoh-cookies-butter");
+    await page.goto("/checkout");
+    const chosen = await clickDayWithStatus(page, "tersedia");
+    await expect(page.getByText(`Tanggal dipilih: ${chosen}`)).toBeVisible();
+
+    const blocked = await clickDayWithStatusFromStart(page, "tidak tersedia: Tutup"); // seeded blocked date
+    await expect(page.getByText(`${blocked}: Tutup.`)).toBeVisible();
+    await expect(page.getByText("Belum ada tanggal dipilih.")).toBeVisible();
+    await expect(page.getByText(/^Tanggal dipilih:/)).toHaveCount(0);
+    await expect(page.getByRole("grid").locator("[aria-selected=true]")).toHaveCount(0);
+
+    await page.getByLabel("Nama").fill("Pelanggan E2E");
+    await page.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");
+    await page.getByRole("radio", { name: /Cash saat Pickup/ }).check();
+    await page.getByRole("button", { name: "Lanjut ke Konfirmasi" }).click();
+    await expect(page.getByText("Pilih tanggal pickup.")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Konfirmasi Pesanan" })).toHaveCount(0);
+  });
+
+  test("Pre-Order: a too-early date chosen by keyboard after a valid one clears the choice and blocks checkout", async ({ page }) => {
+    await addProductToCart(page, "contoh-cheesecake-stroberi"); // min 2 days
+    await page.goto("/checkout");
+    const chosen = await clickDayWithStatus(page, "tersedia");
+    await expect(page.getByText(`Tanggal dipilih: ${chosen}`)).toBeVisible();
+
+    const previous = page.getByRole("button", { name: "Ke bulan sebelumnya" });
+    while (await previous.isEnabled()) await previous.click();
+    const tooEarly = page.getByRole("grid").getByRole("button", { name: /, tidak tersedia: Belum memenuhi minimum Pre-Order$/ }).first();
+    const label = (await tooEarly.getAttribute("aria-label"))!;
+    await tooEarly.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText(`${label.slice(0, label.indexOf(", tidak tersedia"))}: Belum memenuhi minimum Pre-Order.`)).toBeVisible();
+    await expect(page.getByText("Belum ada tanggal dipilih.")).toBeVisible();
+    await expect(tooEarly).toBeFocused(); // focus stays on the day so the reason is announced in context
+
+    await page.getByLabel("Nama").fill("Pelanggan E2E");
+    await page.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");
+    await page.getByRole("radio", { name: "QRIS" }).check();
+    await page.getByRole("button", { name: "Lanjut ke Konfirmasi" }).click();
+    await expect(page.getByText("Pilih tanggal pickup.")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Konfirmasi Pesanan" })).toHaveCount(0);
+  });
+
+  for (const scenario of [
+    { name: "Ready Stock order tampered to a blocked date", slug: "contoh-cookies-butter", method: /Cash saat Pickup/, date: () => wibIsoDate(10), reason: "Tutup" },
+    { name: "Pre-Order tampered to a date before the minimum", slug: "contoh-cheesecake-stroberi", method: /^QRIS/, date: () => wibIsoDate(0), reason: "Belum memenuhi minimum Pre-Order" },
+  ]) {
+    test(`server rejects a modified "Buat Pesanan" payload: ${scenario.name}`, async ({ page }) => {
+      await addProductToCart(page, scenario.slug);
+      await page.goto("/checkout");
+      await clickDayWithStatus(page, "tersedia");
+      await page.getByLabel("Nama").fill("Pelanggan Usil");
+      await page.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");
+      await page.getByRole("radio", { name: scenario.method }).check();
+      await page.getByRole("button", { name: "Lanjut ke Konfirmasi" }).click();
+      const confirm = page.getByRole("region", { name: "Konfirmasi Pesanan" });
+      await expect(confirm).toBeVisible();
+
+      await tamperPlaceOrderPickupDate(page, scenario.date());
+      await confirm.getByRole("button", { name: "Buat Pesanan" }).click();
+
+      // Back on the form: the date is dropped, the reason is shown, no order page.
+      await expect(page.getByText(new RegExp(`: ${scenario.reason}\\.$`))).toBeVisible();
+      await expect(page.getByText("Tanggal ini tidak tersedia. Silakan pilih tanggal lain.")).toBeVisible();
+      await expect(page.getByRole("region", { name: "Konfirmasi Pesanan" })).toHaveCount(0);
+      await expect(page).toHaveURL(/\/checkout$/);
+    });
+  }
 
   test("Ready Stock cart allows Cash (full payment only) and validates required fields", async ({ page }) => {
     await addProductToCart(page, "contoh-cookies-butter");

@@ -54,8 +54,11 @@ export function CheckoutForm({
   const [option, setOption] = useState<Option>("FULL");
   const [result, setResult] = useState<Preview | null>(null);
   const [pending, startTransition] = useTransition();
+  // Bumped when the server rejects the chosen date, so the calendar shows current availability.
+  const [availabilityVersion, setAvailabilityVersion] = useState(0);
   const linesKey = JSON.stringify(cartLinesForServer(items));
-  const hasPreorder = items.some((i) => i.productType === "PRE_ORDER");
+  // Current product data from the server wins over the cart's snapshot (a product may have become Pre-Order).
+  const hasPreorder = availability?.hasPreorder ?? items.some((i) => i.productType === "PRE_ORDER");
 
   useEffect(() => {
     if (!hydrated || items.length === 0) return;
@@ -68,8 +71,15 @@ export function CheckoutForm({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when cart contents change
-  }, [hydrated, linesKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when cart contents change or the server rejects the date
+  }, [hydrated, linesKey, availabilityVersion]);
+
+  /** The server's verdict wins: drop the rejected date so it cannot be submitted again unnoticed. */
+  const rejectPickupDate = (iso: string | null, reason: PickupReasonCode) => {
+    setPickupDate(null);
+    setDateMessage(iso ? `${formatIsoDateLong(iso)}: ${PICKUP_REASON_LABEL[reason]}.` : `${PICKUP_REASON_LABEL[reason]}.`);
+    setAvailabilityVersion((v) => v + 1);
+  };
 
   // Cash is unavailable with Pre-Order (FD-40) and always full payment (FD-39).
   const effectiveMethod: Method | null = hasPreorder && method === "CASH" ? null : method;
@@ -139,7 +149,7 @@ export function CheckoutForm({
       }
       // Something changed since the preview (e.g. the date filled up): back to the form.
       setResult({ ok: false, fieldErrors: outcome.fieldErrors, cartIssues: outcome.cartIssues as never, pickupReason: outcome.pickupReason });
-      if (outcome.pickupReason) setDateMessage(`${formatIsoDateLong(pickupDate ?? "")}: ${PICKUP_REASON_LABEL[outcome.pickupReason]}.`);
+      if (outcome.pickupReason) rejectPickupDate(pickupDate, outcome.pickupReason);
     });
   };
 
@@ -150,7 +160,7 @@ export function CheckoutForm({
       if (!outcome.ok) {
         const firstField = Object.keys(outcome.fieldErrors)[0];
         if (firstField) document.getElementById(`${formId}-${firstField}`)?.focus();
-        if (outcome.pickupReason) setDateMessage(`${formatIsoDateLong(pickupDate ?? "")}: ${PICKUP_REASON_LABEL[outcome.pickupReason]}.`);
+        if (outcome.pickupReason) rejectPickupDate(pickupDate, outcome.pickupReason);
       }
     });
   };
@@ -287,7 +297,12 @@ export function CheckoutForm({
                 setPickupDate(iso);
                 setDateMessage(null);
               }}
-              onUnavailable={(iso, reason: PickupReasonCode) => setDateMessage(`${formatIsoDateLong(iso)}: ${PICKUP_REASON_LABEL[reason]}.`)}
+              onUnavailable={(iso, reason: PickupReasonCode) => {
+                // Choosing an unavailable date replaces any earlier choice: nothing stays selected
+                // behind the error, so the customer can never continue with a date they did not intend.
+                setPickupDate(null);
+                setDateMessage(`${formatIsoDateLong(iso)}: ${PICKUP_REASON_LABEL[reason]}.`);
+              }}
             />
           ) : (
             <div className="h-72 animate-pulse rounded-control bg-surface-muted" aria-busy="true" aria-label="Memuat tanggal" />

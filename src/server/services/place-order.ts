@@ -2,13 +2,13 @@ import "server-only";
 
 import { randomInt } from "node:crypto";
 
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
 import { uniqueViolationConstraint } from "@/server/db/errors";
-import { orderItems, orders, paymentTransactions, products } from "@/server/db/schema";
+import { orderItems, orders, paymentTransactions } from "@/server/db/schema";
 import { paymentBreakdown, type PaymentBreakdown } from "@/server/domain/checkout/payment-rules";
 import { effectiveOrderDate, evaluatePickupDate, maxPreorderDays, pickupWindow, type PickupDateReason } from "@/server/domain/checkout/pickup-date";
 import { generateOrderNumber } from "@/server/domain/orders/order-number";
@@ -19,7 +19,7 @@ import { generateTrackingToken, hashTrackingToken } from "@/server/security/trac
 import type { PublicBucket } from "@/server/storage/types";
 
 import { lockPickupDate } from "./capacity";
-import { previewCheckout, type CheckoutSummary } from "./checkout";
+import { validateCheckout, type CheckoutSummary, type OrderProductFacts } from "./checkout";
 import { getSettings } from "./settings";
 
 export interface PlaceOrderDeps {
@@ -136,7 +136,7 @@ export async function placeOrder(deps: PlaceOrderDeps, input: unknown, options: 
   const limit = await consumeRateLimit(deps.db, `place-order:ip:${options.clientIp}`, PLACE_ORDER_RATE_LIMIT, now);
   if (!limit.allowed) return { ok: false, code: "RATE_LIMITED" };
 
-  const preview = await previewCheckout({ ...deps, clock: fixedClock }, input);
+  const preview = await validateCheckout({ ...deps, clock: fixedClock }, input);
   if (!preview.ok) {
     return {
       ok: false,
@@ -146,25 +146,9 @@ export async function placeOrder(deps: PlaceOrderDeps, input: unknown, options: 
       pickupReason: preview.pickupReason,
     };
   }
-  const summary = preview.summary;
+  const { summary, productFacts } = preview;
 
   const settings = await getSettings(deps.db);
-  const productRows = await deps.db
-    .select({
-      id: products.id,
-      price: products.price,
-      salePrice: products.salePrice,
-      productType: products.productType,
-      minimumPreorderDays: products.minimumPreorderDays,
-    })
-    .from(products)
-    .where(
-      inArray(
-        products.id,
-        summary.lines.map((l) => l.productId),
-      ),
-    );
-  const productFacts = new Map(productRows.map((p) => [p.id, p]));
   const lineFacts = summary.lines.map((l) => productFacts.get(l.productId)!);
 
   const window = pickupWindow({
@@ -232,15 +216,7 @@ export async function insertOrder(
     orderDateEffective: IsoDate;
     /** Manual Order: the creating admin (source MANUAL, audit actor). */
     createdByAdminId?: string;
-    productFacts: Map<
-      string,
-      {
-        price: number;
-        salePrice: number | null;
-        productType: "READY_STOCK" | "PRE_ORDER";
-        minimumPreorderDays: number | null;
-      }
-    >;
+    productFacts: OrderProductFacts;
   },
 ): Promise<PlaceOrderResult> {
   const { summary, now, settings } = args;

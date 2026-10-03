@@ -24,6 +24,36 @@ export async function clickDayWithStatus(page: Page, status: string): Promise<st
   return label.slice(0, label.lastIndexOf(`, ${status}`));
 }
 
+/** Like clickDayWithStatus, but starts from the first month so earlier dates are found after paging forward. */
+export async function clickDayWithStatusFromStart(page: Page, status: string): Promise<string> {
+  const previous = page.getByRole("button", { name: "Ke bulan sebelumnya" });
+  while (await previous.isEnabled()) await previous.click();
+  return clickDayWithStatus(page, status);
+}
+
+/** Today's date in WIB plus `days`, as YYYY-MM-DD (what the server and the seed use). */
+export function wibIsoDate(days = 0): string {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+  const [y, m, d] = today.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * Rewrites the pickup date inside the "Buat Pesanan" server-action request (args:
+ * [input, idempotencyKey]) — a customer tampering with the payload after the preview.
+ */
+export async function tamperPlaceOrderPickupDate(page: Page, pickupDate: string) {
+  await page.route("**/checkout", async (route) => {
+    const request = route.request();
+    const body = request.postData() ?? "";
+    if (request.method() === "POST" && request.headers()["next-action"] && /,"[0-9a-f-]{36}"\]$/.test(body)) {
+      await route.continue({ postData: body.replace(/"pickupDate":"[^"]*"/, `"pickupDate":"${pickupDate}"`) });
+      return;
+    }
+    await route.continue();
+  });
+}
+
 export async function addProductToCart(page: Page, slug: string, quantity = 1) {
   await page.goto(`/produk/${slug}`);
   if (quantity > 1) await page.getByRole("spinbutton", { name: "Jumlah" }).fill(String(quantity));

@@ -73,8 +73,10 @@ export function PickupDatePicker({
       disabled={[{ before: toLocalDate(first) }, { after: toLocalDate(last) }]}
       modifiers={{ unavailable }}
       modifiersClassNames={{ unavailable: "enjua-day-unavailable" }}
-      onDayClick={(date) => {
-        const iso = toIso(date);
+      // onSelect (not onDayClick) keeps DayPicker controlled: without it, DayPicker keeps its own
+      // selection and highlights an unavailable day as "selected" while the form holds no date.
+      onSelect={(_next, clicked) => {
+        const iso = toIso(clicked);
         const status = byDate.get(iso);
         if (!status) return;
         if (status.available) onSelect(iso);

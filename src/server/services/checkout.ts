@@ -20,7 +20,7 @@ import {
   type PickupWindow,
 } from "@/server/domain/checkout/pickup-date";
 import { computeTotals, type OrderTotals } from "@/server/domain/checkout/totals";
-import { parseIsoDate, type IsoDate } from "@/server/domain/time/wib";
+import { compareIsoDates, parseIsoDate, type IsoDate } from "@/server/domain/time/wib";
 import type { PublicBucket } from "@/server/storage/types";
 
 import { capacityFactsForDates } from "./capacity";
@@ -100,9 +100,16 @@ export interface CartValidation {
 
 /** Re-validates a browser cart against current data (EC-07, EC-08, EC-15). */
 export async function validateCart(deps: CheckoutDeps, rawLines: unknown): Promise<CartValidation> {
+  return (await validateCartWithFacts(deps, rawLines)).validation;
+}
+
+/** Product facts snapshotted into an order — the same read that validated and priced the cart. */
+export type OrderProductFacts = Map<string, { price: number; salePrice: number | null; productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }>;
+
+async function validateCartWithFacts(deps: CheckoutDeps, rawLines: unknown): Promise<{ validation: CartValidation; productMap: Map<string, CartProductRow> }> {
   const parsed = cartLinesSchema.safeParse(rawLines);
   if (!parsed.success) {
-    return { lines: [], totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false };
+    return { validation: { lines: [], totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false }, productMap: new Map() };
   }
   const lines = parsed.data;
   const productMap = await loadCartProducts(deps.db, [...new Set(lines.map((l) => l.productId))]);
@@ -141,14 +148,20 @@ export async function validateCart(deps: CheckoutDeps, rawLines: unknown): Promi
     );
   } catch (error) {
     if (!(error instanceof Error && error.name === "TotalsOverflowError")) throw error;
-    return { lines: views.map((v) => ({ ...v, issue: v.issue ?? "INVALID_QUANTITY" })), totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false };
+    return {
+      validation: { lines: views.map((v) => ({ ...v, issue: v.issue ?? "INVALID_QUANTITY" })), totals: { lines: [], subtotal: 0, discountTotal: 0, grandTotal: 0 }, hasPreorder: false, canCheckout: false },
+      productMap,
+    };
   }
 
   return {
-    lines: views,
-    totals,
-    hasPreorder: valid.some((v) => v.product?.productType === "PRE_ORDER"),
-    canCheckout: valid.length > 0 && valid.length === views.length,
+    validation: {
+      lines: views,
+      totals,
+      hasPreorder: valid.some((v) => v.product?.productType === "PRE_ORDER"),
+      canCheckout: valid.length > 0 && valid.length === views.length,
+    },
+    productMap,
   };
 }
 
@@ -215,12 +228,12 @@ const firstErrors = (error: z.ZodError) => {
 export async function prepareCheckout(
   deps: CheckoutDeps,
   rawInput: unknown,
-): Promise<{ ok: true; summary: CheckoutSummary; preorderFacts: Array<{ productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }> } | Extract<CheckoutPreviewResult, { ok: false }>> {
+): Promise<{ ok: true; summary: CheckoutSummary; productFacts: OrderProductFacts } | Extract<CheckoutPreviewResult, { ok: false }>> {
   const parsed = checkoutInputSchema.safeParse(rawInput);
   if (!parsed.success) return { ok: false, fieldErrors: firstErrors(parsed.error) };
   const input = parsed.data;
 
-  const cart = await validateCart(deps, input.items);
+  const { validation: cart, productMap } = await validateCartWithFacts(deps, input.items);
   const cartIssues = cart.lines.filter((l) => l.issue).map((l) => ({ productId: l.productId, issue: l.issue! }));
   if (!cart.canCheckout) {
     return { ok: false, fieldErrors: { items: "Periksa kembali isi keranjang." }, cartIssues };
@@ -244,7 +257,12 @@ export async function prepareCheckout(
   const names = new Map(cart.lines.map((l) => [l.productId, l.product!]));
   return {
     ok: true,
-    preorderFacts: cart.lines.map((l) => ({ productType: l.product!.productType, minimumPreorderDays: l.product!.minimumPreorderDays })),
+    productFacts: new Map(
+      cart.lines.map((l) => {
+        const p = productMap.get(l.productId)!;
+        return [l.productId, { price: p.price, salePrice: p.salePrice, productType: p.productType, minimumPreorderDays: p.minimumPreorderDays }];
+      }),
+    ),
     summary: {
       customerName: input.customerName,
       whatsapp: input.whatsapp,
@@ -274,14 +292,31 @@ export async function prepareCheckout(
  * under the pickup-date lock.
  */
 export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Promise<CheckoutPreviewResult> {
+  const result = await validateCheckout(deps, rawInput);
+  return result.ok ? { ok: true, summary: result.summary } : result;
+}
+
+/**
+ * previewCheckout plus the product facts it validated against, so order creation
+ * snapshots exactly the data that was checked (no second read that could differ).
+ */
+export async function validateCheckout(
+  deps: CheckoutDeps,
+  rawInput: unknown,
+): Promise<{ ok: true; summary: CheckoutSummary; productFacts: OrderProductFacts } | Extract<CheckoutPreviewResult, { ok: false }>> {
   const prepared = await prepareCheckout(deps, rawInput);
   if (!prepared.ok) return prepared;
   const { summary } = prepared;
-  const availability = await availabilityFor(deps, prepared.preorderFacts);
-  const status = availability.dates.find((d) => d.date === summary.pickupDate) ?? { date: summary.pickupDate, available: false as const, reason: "OUTSIDE_HORIZON" as const };
+  const availability = await availabilityFor(deps, [...prepared.productFacts.values()]);
+  // Dates outside today..horizon are not in the list: before today is a past date, otherwise beyond the horizon.
+  const status = availability.dates.find((d) => d.date === summary.pickupDate) ?? {
+    date: summary.pickupDate,
+    available: false as const,
+    reason: compareIsoDates(summary.pickupDate, availability.window.today) < 0 ? ("PAST_DATE" as const) : ("OUTSIDE_HORIZON" as const),
+  };
   if (!status.available) {
     return { ok: false, fieldErrors: { pickupDate: "Tanggal ini tidak tersedia. Silakan pilih tanggal lain." }, pickupReason: status.reason };
   }
-  return { ok: true, summary };
+  return prepared;
 }
 

@@ -61,7 +61,24 @@ export async function addProductToCart(page: Page, slug: string, quantity = 1) {
   await expect(page.getByRole("status").filter({ hasText: "ditambahkan ke keranjang" })).toBeVisible();
 }
 
+/**
+ * Waits until every finite CSS animation/transition on the page has finished (entrance
+ * motion, drawer slide-in), so checks such as axe colour contrast see the settled UI.
+ * Infinite animations (loading skeletons) are ignored; they never finish.
+ */
+export async function waitForEntranceAnimations(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 export async function expectNoSeriousAxe(page: Page) {
+  await waitForEntranceAnimations(page);
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }

@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { waitForEntranceAnimations } from "./helpers";
+
 /** Viewport matrix from IMPLEMENTATION-PLAN §33. */
 const VIEWPORTS = [
   { name: "phone-small", width: 320, height: 568 },
@@ -34,6 +36,7 @@ for (const viewport of VIEWPORTS) {
 for (const path of PAGES) {
   test(`axe: no serious or critical WCAG A/AA violations on ${path}`, async ({ page }) => {
     await page.goto(path);
+    await waitForEntranceAnimations(page);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(blocking.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
@@ -44,6 +47,8 @@ test("axe: mobile drawer open has no serious violations", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "Buka menu" }).click();
+  await expect(page.getByRole("navigation", { name: "Menu utama" })).toBeVisible();
+  await waitForEntranceAnimations(page);
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
 });

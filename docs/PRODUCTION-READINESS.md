@@ -19,7 +19,7 @@ Alat verifikasi: `npm run preflight -- --target=production|staging` (env),
 | Transaksi & lock | Lock tanggal (kapasitas), lock order → transaksi (pembayaran); tes konkurensi & race lulus |
 | Storage | Driver `local` + `s3` (S3-compatible, diuji terhadap server S3); bucket publik/privat wajib berbeda |
 | Pembayaran (kode) | Adapter Midtrans (sandbox/production), webhook terverifikasi + status API + idempotensi; MockProvider ditolak di production |
-| Cron | Endpoint Bearer constant-time; jadwal 5 menit (`vercel.json` / crontab contoh) |
+| Cron | Endpoint Bearer constant-time; Vercel Cron 1×/hari (batas Hobby, `vercel.json`) — kebenaran kapasitas lewat lazy expiry; crontab contoh Opsi B tiap 5 menit |
 | Auth/sesi | Argon2id, rate limit login, idle 8 j/absolut 7 h, revokasi sesi, proteksi admin terakhir, CLI admin production-safe |
 | Keamanan HTTP | CSP nonce, HSTS, X-Frame-Options, nosniff, Referrer-Policy, cookie HttpOnly/Secure/SameSite, batas body API |
 | Tracking | Token 256-bit di-hash, cookie bertanda tangan, rate limit, tanpa kebocoran ke URL/HTML/WhatsApp/log |

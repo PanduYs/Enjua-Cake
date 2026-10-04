@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { findDestructiveStatements } from "@/server/ops/migration-guard";
@@ -65,5 +67,19 @@ describe("deployment preflight (plan §37)", () => {
     expect(r.warnings.join()).toMatch(/persistent/);
     expect(r.warnings.join()).toMatch(/sslmode/);
     expect(JSON.stringify(r)).not.toContain("p4ssw0rd");
+  });
+});
+
+describe("Vercel Cron fits the Hobby plan (at most once per day)", () => {
+  it("every cron runs at a fixed minute and hour, and the sweeper is configured", () => {
+    const config = JSON.parse(readFileSync("vercel.json", "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+    expect(config.crons.map((c) => c.path)).toContain("/api/cron/expire-reservations");
+    for (const { schedule } of config.crons) {
+      const [minute, hour, ...rest] = schedule.trim().split(/\s+/);
+      expect(rest).toHaveLength(3);
+      // "*/5", "*", ranges or lists would run more than once a day and fail a Hobby deployment.
+      expect(minute).toMatch(/^\d{1,2}$/);
+      expect(hour).toMatch(/^\d{1,2}$/);
+    }
   });
 });

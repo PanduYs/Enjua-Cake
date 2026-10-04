@@ -19,7 +19,7 @@ dipertahankan sebagai referensi; repositori masih mendukung kedua opsi tanpa men
 | Aplikasi | Vercel Pro (region Singapura) | 1 VPS + Docker (`Dockerfile` target `runner`, output standalone) |
 | Database | Supabase PostgreSQL (backup terkelola) | PostgreSQL 16 (container/VM) + backup sendiri |
 | Storage | Supabase Storage (API S3) | S3-compatible (mis. Cloudflare R2) atau disk + backup |
-| Sweeper | Vercel Cron (`vercel.json`, tiap 5 menit) | cron host memanggil endpoint (lihat bawah) |
+| Sweeper | Vercel Cron (`vercel.json`, 1×/hari — batas Hobby; lihat §4) | cron host memanggil endpoint (lihat bawah) |
 | TLS | otomatis | reverse proxy (Caddy/Nginx) |
 
 Kode hanya bergantung pada PostgreSQL standar, API S3, dan endpoint HTTP, sehingga
@@ -106,10 +106,31 @@ data contoh ke database production.
 ## 4. Cron (sweeper reservasi, TD-07)
 
 Endpoint: `GET|POST /api/cron/expire-reservations` dengan header
-`Authorization: Bearer $CRON_SECRET`. Jadwal: **tiap 5 menit** (1–5 menit sesuai plan).
-Kebenaran kapasitas tidak bergantung pada cron (lazy expiry); cron merapikan status.
+`Authorization: Bearer $CRON_SECRET`. Kebenaran kapasitas dan pembayaran **tidak**
+bergantung pada cron; cron hanya merapikan status order yang tidak pernah dibuka lagi:
 
-- Opsi A: `vercel.json` sudah berisi jadwal; Vercel mengirim `CRON_SECRET` otomatis.
+- kapasitas tidak menghitung reservasi yang `reservationExpiresAt`-nya lewat;
+- order kedaluwarsa dibatalkan secara lazy saat dibuka di Lacak Pesanan, saat customer
+  meminta QRIS/mengunggah bukti, saat admin membuka detail order, dan daftar order
+  admin serta dashboard menyapu semua yang jatuh tempo sebelum tampil;
+- webhook pembayaran mengunci order dan menjalankan expiry dulu, sehingga pembayaran
+  yang datang setelah batas waktu menjadi exception, tidak menghidupkan order lagi.
+
+**Vercel Hobby:** Vercel Cron di paket Hobby hanya boleh berjalan maksimal sekali per hari
+(waktu eksekusi tidak presisi dalam jam tersebut); ekspresi yang lebih sering, seperti
+`*/5 * * * *`, membuat deployment ditolak — termasuk Preview. Karena itu `vercel.json`
+memakai `0 20 * * *` (20.00 UTC = 03.00 WIB). Test `tests/unit/production-ops.test.ts`
+menjaga agar jadwal tetap ≤ 1×/hari.
+
+**Implikasi production (Hobby, 1×/hari):** tidak ada dampak ke kapasitas, pembayaran, atau
+apa yang dilihat customer/admin (semua jalur di atas memakai lazy expiry). Yang berubah
+hanya baris order di database: order kedaluwarsa yang tidak dibuka siapa pun bisa tetap
+berstatus `NEW` hingga sapuan harian, dashboard admin, atau daftar order berikutnya.
+Bila status DB perlu rapi lebih sering (mis. untuk laporan langsung dari database):
+upgrade ke Vercel Pro dan kembalikan jadwal ke `*/5 * * * *` (ubah juga test di atas), atau
+pakai penjadwal eksternal yang memanggil endpoint tiap 5 menit dengan `CRON_SECRET`.
+
+- Opsi A: `vercel.json` berisi jadwal harian; Vercel mengirim `CRON_SECRET` otomatis.
   Vercel Cron dipakai untuk **Production** (cron Vercel hanya memanggil Production
   deployment). Staging di Preview **tidak** bergantung pada Vercel Cron untuk kebenaran
   kapasitas: reservasi kedaluwarsa tidak dihitung saat menghitung kapasitas, dan status

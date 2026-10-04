@@ -8,8 +8,24 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+/**
+ * Development only: hostnames (no scheme/port) that may use the dev server's /_next resources
+ * when the site is opened from another device on the LAN, e.g. a phone at
+ * http://172.20.10.5:3000. Next.js rejects the HMR WebSocket from any other origin and, in
+ * development, the page then never hydrates (menus and buttons do not respond). Extra hosts:
+ * DEV_ALLOWED_ORIGINS="192.168.1.20,192.168.1.21" in .env.local.
+ */
+const devAllowedOrigins = [
+  "172.20.10.5",
+  ...(process.env.DEV_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean),
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  ...(process.env.NODE_ENV !== "production" ? { allowedDevOrigins: devAllowedOrigins } : {}),
   // Self-hosted container builds (TD-17 Opsi B) set NEXT_OUTPUT=standalone; managed hosting leaves it unset.
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   // Resolve <title>/meta before streaming the body for every client, so assistive

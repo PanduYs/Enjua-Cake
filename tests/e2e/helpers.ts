@@ -100,7 +100,7 @@ export async function createOrderViaUi(
   await page.getByRole("region", { name: "Konfirmasi Pesanan" }).getByRole("button", { name: "Buat Pesanan" }).click();
 
   await expect(page).toHaveURL(/\/pesanan\/sukses$/);
-  await expect(page.getByText("Pesanan berhasil dibuat.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Pesanan kamu sudah tercatat/ })).toBeVisible();
   const orderNumber = (await page.getByTestId("order-number").textContent())!.trim();
   const token = (await page.getByTestId("tracking-token").textContent())!.trim();
   expect(orderNumber).toMatch(/^ENC-\d{8}-[0-9A-HJKMNP-TV-Z]{4}$/);

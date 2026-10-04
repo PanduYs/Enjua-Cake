@@ -2,6 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { createOrderViaUi, expectNoSeriousAxe, loginOrdersAdmin } from "./helpers";
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const { scroll, client } = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+  expect(scroll).toBeLessThanOrEqual(client);
+}
+
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
 async function openTracking(page: Page, orderNumber: string, token: string) {
@@ -17,17 +22,40 @@ async function openAdminOrder(page: Page, orderNumber: string) {
 
 test.describe("payments (Phase 5, MockProvider)", () => {
   for (const c of [
-    { method: "QRIS", option: "Bayar Penuh", due: "Rp225.000", step: "Tekan \u201cLacak Pesanan Sekarang\u201d di atas, lalu \u201cTampilkan QRIS\u201d untuk memindai kode pembayaran." },
-    { method: "Transfer Bank", option: "Bayar DP 50%", due: "Rp112.500", step: "Tekan \u201cLacak Pesanan Sekarang\u201d di atas untuk melihat rekening tujuan dan mengunggah bukti transfer." },
+    {
+      method: "QRIS",
+      option: "Bayar Penuh",
+      due: "Rp225.000",
+      payStatus: "Menunggu Pembayaran",
+      cta: "Bayar Sekarang dengan QRIS",
+      step: "QRIS ditampilkan di halaman Lacak Pesanan. Pindai dengan aplikasi bank atau e-wallet.",
+    },
+    {
+      method: "Transfer Bank",
+      option: "Bayar DP 50%",
+      due: "Rp112.500",
+      payStatus: "Menunggu Pembayaran DP",
+      cta: "Lihat Instruksi Pembayaran",
+      step: "Rekening tujuan dan tempat unggah bukti transfer ada di halaman Lacak Pesanan.",
+    },
   ] as const) {
     test(`${c.method} ${c.option}: the success page says how to pay; the tracking page shows the payment details`, async ({ page }) => {
       await createOrderViaUi(page, { customerName: `Pelanggan ${c.method}`, slug: "contoh-cheesecake-stroberi", quantity: 1, method: c.method, option: c.option });
       const step = page.getByTestId("payment-next-step");
       await expect(step).toContainText(c.step);
-      await expect(page.getByText(`Lakukan pembayaran ${c.due} melalui ${c.method}`)).toBeVisible();
-      await expect(page.locator("main")).not.toContainText(/ldquo|rdquo/);
+      // Scenario A/E: the order is recorded, but payment is still pending — never "berhasil".
+      await expect(page.getByTestId("success-payment-status")).toHaveText(c.payStatus);
+      await expect(page.getByTestId("success-processing-status")).toHaveText("Menunggu Pembayaran");
+      await expect(page.getByTestId("success-headline")).toHaveText("Pesanan belum dapat diproses sampai pembayaran dikonfirmasi.");
+      await expect(page.getByTestId("success-amounts")).toContainText(c.due);
+      await expect(page.getByText("Bayar sebelum")).toBeVisible();
+      await expect(page.locator("main")).not.toContainText(/ldquo|rdquo|Pembayaran Berhasil|Lunas/);
+      await expect(page.getByRole("link", { name: c.cta })).toBeVisible();
 
+      // Scenario I: the tracking page reports the same payment state as the success page.
       await page.getByRole("link", { name: "Lacak Pesanan Sekarang" }).click();
+      await expect(page.getByTestId("tracking-payment-status")).toHaveText(c.payStatus);
+      await expect(page.getByTestId("tracking-status")).toHaveText("Menunggu Pembayaran");
       const panel = page.getByRole("region", { name: "Lakukan Pembayaran" });
       if (c.method === "QRIS") {
         await panel.getByRole("button", { name: "Tampilkan QRIS" }).click();
@@ -44,25 +72,42 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     });
   }
 
-  test("QRIS DP: show QR → verified payment confirms the order → remaining via QRIS → Lunas", async ({ page }) => {
-    const { orderNumber, token } = await createOrderViaUi(page, {
+  test("QRIS DP (mobile 390px): success shows DP + remaining → QR → verified payment confirms the order → remaining via QRIS → paid", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const { orderNumber } = await createOrderViaUi(page, {
       customerName: "Pelanggan QRIS",
       slug: "contoh-cheesecake-stroberi",
       quantity: 1,
       method: "QRIS",
       option: "Bayar DP 50%",
     });
-    await openTracking(page, orderNumber, token);
+    // Scenario E on the success page: DP due now, remainder later.
+    const amounts = page.getByTestId("success-amounts");
+    await expect(amounts).toContainText(/DP yang Harus Dibayar\s*Rp112\.500/);
+    await expect(amounts).toContainText(/Sisa Pembayaran\s*Rp112\.500/);
+    await expect(page.getByTestId("success-payment-status")).toHaveText("Menunggu Pembayaran DP");
+    // Scenario J: no horizontal overflow on a phone; the primary CTA is a comfortable tap target.
+    await expectNoHorizontalOverflow(page);
+    const cta = page.getByRole("link", { name: "Bayar Sekarang dengan QRIS" });
+    expect((await cta.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expectNoSeriousAxe(page);
+    await cta.click();
+    await expect(page.getByTestId("tracking-order-number")).toHaveText(orderNumber);
+    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Menunggu Pembayaran DP");
+    await expectNoHorizontalOverflow(page);
     const panel = page.getByRole("region", { name: "Lakukan Pembayaran" });
     await panel.getByRole("button", { name: "Tampilkan QRIS" }).click();
     await expect(panel.getByTestId("qris-image")).toBeVisible();
     await expect(panel.getByText("DP 50%: Rp112.500")).toBeVisible();
+    await expect(panel.getByText("QRIS berlaku selama")).toBeVisible();
+    await expect(panel.getByTestId("qris-countdown")).toHaveText(/^\d{2}:\d{2}$/);
+    await expectNoHorizontalOverflow(page);
     await expectNoSeriousAxe(page);
 
     // Simulated gateway payment → signed webhook through the real verification path.
     await panel.getByRole("button", { name: "Simulasikan Bayar Berhasil" }).click();
     await expect(page.getByTestId("tracking-status")).toContainText("Dikonfirmasi");
-    await expect(page.getByTestId("tracking-payment-status")).toHaveText("DP Terbayar");
+    await expect(page.getByTestId("tracking-payment-status")).toHaveText("DP Dibayar");
 
     const remaining = page.getByRole("region", { name: "Pelunasan" });
     await expect(remaining.getByText("Rp112.500", { exact: false }).first()).toBeVisible();
@@ -70,7 +115,7 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     await remaining.getByRole("button", { name: "Tampilkan QRIS" }).click();
     await expect(remaining.getByText("Pelunasan: Rp112.500")).toBeVisible();
     await remaining.getByRole("button", { name: "Simulasikan Bayar Berhasil" }).click();
-    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Lunas");
+    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Pembayaran Berhasil");
     await expect(page.getByRole("region", { name: "Pelunasan" })).toHaveCount(0);
   });
 
@@ -81,10 +126,12 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     await panel.getByRole("button", { name: "Tampilkan QRIS" }).click();
     await panel.getByRole("button", { name: "Simulasikan Bayar Gagal" }).click();
     await expect(page.getByTestId("tracking-payment-status")).toHaveText("Pembayaran Gagal");
-    await expect(panel.getByText("Pembayaran QRIS sebelumnya gagal")).toBeVisible();
-    await panel.getByRole("button", { name: "Buat QRIS Baru" }).click();
+    await expect(panel.getByText("Pembayaran belum berhasil. Silakan coba kembali.")).toBeVisible();
+    await expect(page.getByTestId("tracking-headline")).toHaveText("Pesanan kamu sudah tercatat, tetapi pembayarannya belum berhasil.");
+    await expectNoSeriousAxe(page);
+    await panel.getByRole("button", { name: "Coba Bayar Lagi" }).click();
     await expect(panel.getByTestId("qris-image")).toBeVisible();
-    await expect(page.getByTestId("tracking-status")).toContainText("Pesanan Baru");
+    await expect(page.getByTestId("tracking-status")).toHaveText("Menunggu Pembayaran");
   });
 
   test("Transfer: upload proof → admin rejects with reason → re-upload → admin approves → Dikonfirmasi", async ({ browser }) => {
@@ -135,7 +182,7 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     await expect(admin.getByTestId("admin-transactions")).toContainText("Terbayar");
 
     await customer.reload();
-    await expect(customer.getByTestId("tracking-payment-status")).toHaveText("Lunas");
+    await expect(customer.getByTestId("tracking-payment-status")).toHaveText("Pembayaran Berhasil");
   });
 
   test("Cash: admin marks paid at pickup, then the order can be completed", async ({ browser }) => {

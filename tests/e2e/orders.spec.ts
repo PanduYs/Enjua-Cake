@@ -8,6 +8,13 @@ test.describe("orders (Phase 4)", () => {
   test("checkout creates an order; success page → tracking link opens the order without leaving the code in the URL", async ({ page, context }) => {
     const { orderNumber } = await createCashOrder(page, "Pelanggan Lacak");
 
+    // Cash (scenario D): recorded, paid at pickup — no online payment is asked for.
+    await expect(page.getByTestId("success-payment-status")).toHaveText("Bayar Saat Pengambilan");
+    await expect(page.getByTestId("success-processing-status")).toHaveText("Menunggu Konfirmasi Toko");
+    await expect(page.getByTestId("success-amounts")).toContainText("Dibayar saat pengambilan");
+    await expect(page.getByRole("link", { name: /Bayar Sekarang|Instruksi Pembayaran/ })).toHaveCount(0);
+    await expect(page.locator("main")).not.toContainText(/Menunggu Pembayaran|Bayar sebelum|QRIS/);
+
     // Cart is cleared after a successful order.
     await expect(page.getByRole("link", { name: /Keranjang/ }).first()).not.toContainText(/[1-9]/);
     await expectNoSeriousAxe(page);
@@ -20,8 +27,9 @@ test.describe("orders (Phase 4)", () => {
 
     await page.getByRole("link", { name: "Lacak Pesanan Sekarang" }).click();
     await expect(page.getByTestId("tracking-order-number")).toHaveText(orderNumber);
-    await expect(page.getByTestId("tracking-status")).toContainText("Pesanan Baru");
-    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Belum Dibayar");
+    await expect(page.getByTestId("tracking-status")).toHaveText("Menunggu Konfirmasi Toko");
+    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Bayar Saat Pengambilan");
+    await expect(page.getByRole("region", { name: "Pembayaran Saat Pengambilan" })).toContainText("Tidak perlu membayar online.");
     expect(new URL(page.url()).hash).toBe("");
     await expect(page.getByText("6281234567890")).toHaveCount(0);
 

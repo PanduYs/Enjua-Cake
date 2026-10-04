@@ -1,12 +1,12 @@
 import "server-only";
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { TrackingView } from "@/lib/orders/tracking-view";
 import type { Clock } from "@/server/clock";
 import type { Database } from "@/server/db/client";
-import { orderItems, orders } from "@/server/db/schema";
+import { orderItems, orders, paymentTransactions, refunds } from "@/server/db/schema";
 import { normalizeOrderNumber, ORDER_NUMBER_PATTERN } from "@/server/domain/orders/order-number";
 import { consumeRateLimit } from "@/server/security/rate-limit";
 import { hashTrackingToken, normalizeTrackingToken, trackingTokenMatches, trackingTokenRef } from "@/server/security/tracking-token";
@@ -72,6 +72,13 @@ export async function getTrackingView(db: Database, session: { orderId: string; 
     .from(orderItems)
     .where(eq(orderItems.orderId, o.id))
     .orderBy(asc(orderItems.productNameSnapshot));
+  // Same rule as syncOrderPayment: completed refunds of counted payments, not of exceptions.
+  const refundRows = await db
+    .select({ amount: refunds.amount, isException: paymentTransactions.isException })
+    .from(refunds)
+    .leftJoin(paymentTransactions, eq(refunds.paymentTransactionId, paymentTransactions.id))
+    .where(and(eq(refunds.orderId, o.id), eq(refunds.status, "COMPLETED")));
+  const refundedAmount = refundRows.filter((r) => r.isException !== true).reduce((sum, r) => sum + r.amount, 0);
   return {
     orderNumber: o.orderNumber,
     customerName: o.customerName,
@@ -88,6 +95,7 @@ export async function getTrackingView(db: Database, session: { orderId: string; 
     dpAmount: o.dpAmount,
     paidAmount: o.paidAmount,
     remainingAmount: o.remainingAmount,
+    refundedAmount,
     reservationExpiresAt: o.orderStatus === "NEW" ? (o.reservationExpiresAt?.toISOString() ?? null) : null,
     cancellation: o.orderStatus !== "CANCELLED" ? null : o.cancellationReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "ADMIN",
   };

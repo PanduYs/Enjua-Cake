@@ -15,6 +15,8 @@ import { approvePaymentProof, completeRefund, getPaymentQueue, markCashPaid, rec
 import { processPaymentWebhook } from "@/server/services/payment-webhook";
 import { getCustomerPaymentState, requestQrisPayment, startTransferRemainingPayment, uploadPaymentProof } from "@/server/services/payments";
 import { placeOrder, type PlacedOrder } from "@/server/services/place-order";
+import { getTrackingView } from "@/server/services/tracking";
+import { trackingTokenRef } from "@/server/security/tracking-token";
 
 let handle: DatabaseHandle;
 const ids: Record<string, string> = {};
@@ -444,8 +446,15 @@ describe("refund records (FD-61–FD-64)", () => {
     expect((await row(o.orderId)).paymentStatus).toBe("PAID"); // pending refunds do not count yet
     if (partial.ok) await completeRefund(handle.db, { refundId: partial.refundId, adminId: ADMIN_ID }, clock);
     expect((await row(o.orderId)).paymentStatus).toBe("PARTIALLY_REFUNDED");
+    const view = async () => {
+      const r = await row(o.orderId);
+      return (await getTrackingView(handle.db, { orderId: o.orderId, tokenRef: trackingTokenRef(r.trackingTokenHash) }, clock))!;
+    };
+    // The customer sees the completed refunds only (pending ones are not money returned yet).
+    expect(await view()).toMatchObject({ paymentStatus: "PARTIALLY_REFUNDED", refundedAmount: 50_000 });
     await recordRefund(handle.db, { orderId: o.orderId, adminId: ADMIN_ID, amount: 75_555, reason: "Sisa", status: "COMPLETED" }, clock);
     expect((await row(o.orderId)).paymentStatus).toBe("REFUNDED");
+    expect(await view()).toMatchObject({ paymentStatus: "REFUNDED", refundedAmount: 125_555 });
     expect((await getPaymentQueue(handle.db)).refundCandidates.map((r) => r.orderId)).not.toContain(o.orderId);
   });
 });

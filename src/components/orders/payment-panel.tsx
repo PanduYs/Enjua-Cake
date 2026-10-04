@@ -39,6 +39,34 @@ function usePaymentPolling(enabled: boolean, current: string) {
   }, [enabled, router]);
 }
 
+/** "QRIS berlaku selama mm:ss"; refreshes the page when the QR runs out (server decides what is next). */
+function QrCountdown({ until }: { until: string }) {
+  const router = useRouter();
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clock starts after mount (no SSR/client mismatch)
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = now === null ? null : Math.max(0, Date.parse(until) - now);
+  useEffect(() => {
+    if (left === 0) router.refresh();
+  }, [left, router]);
+  if (left === null) return null;
+  if (left === 0) return <p className="font-semibold">QRIS ini sudah tidak berlaku.</p>;
+  const minutes = Math.floor(left / 60_000);
+  const seconds = Math.floor((left % 60_000) / 1000);
+  return (
+    <p className="text-sm">
+      QRIS berlaku selama{" "}
+      <strong className="font-mono text-base" data-testid="qris-countdown">
+        {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+      </strong>
+    </p>
+  );
+}
+
 function QrisBlock({
   state,
   qrDataUrl,
@@ -72,20 +100,37 @@ function QrisBlock({
           <p className="font-semibold">
             {PAYMENT_PURPOSE_LABEL[qris.purpose]}: {formatRupiah(qris.amount)}
           </p>
+          <QrCountdown until={qris.expiresAt} />
           <p className="text-sm">Pindai dengan aplikasi bank atau e-wallet yang mendukung QRIS sebelum {formatWibDateTime(qris.expiresAt)} WIB.</p>
           <p className="text-sm text-muted-foreground" role="status">
-            Status diperbarui otomatis setelah pembayaran terverifikasi.
+            Setelah membayar, status diperbarui otomatis. Pembayaran baru dianggap berhasil setelah dikonfirmasi sistem pembayaran.
           </p>
         </div>
       ) : (
         <>
-          {state.lastAttempt ? (
+          {state.lastAttempt === "FAILED" ? (
             <p className="rounded-control border border-danger bg-background px-4 py-3 text-sm">
-              Pembayaran QRIS sebelumnya {state.lastAttempt === "FAILED" ? "gagal" : "kedaluwarsa"}. Silakan buat QRIS baru.
+              <span aria-hidden="true">🔴 </span>Pembayaran belum berhasil. Silakan coba kembali.
             </p>
-          ) : null}
+          ) : state.lastAttempt === "EXPIRED" ? (
+            <p className="rounded-control border border-border bg-background px-4 py-3 text-sm">
+              <span aria-hidden="true">⚪ </span>QRIS sebelumnya sudah tidak berlaku. Silakan buat pembayaran baru.
+            </p>
+          ) : (
+            <p className="text-sm">
+              {state.stage === "PAY_REMAINING" ? (
+                <>
+                  Lunasi sisa <strong>{formatRupiah(state.amountDue)}</strong> melalui QRIS.
+                </>
+              ) : (
+                <>
+                  Silakan selesaikan pembayaran <strong>{formatRupiah(state.amountDue)}</strong> melalui QRIS agar pesanan dapat diproses.
+                </>
+              )}
+            </p>
+          )}
           <Button type="button" disabled={pending} onClick={() => run(requestQris)} className="self-start">
-            {pending ? "Menyiapkan QRIS…" : state.lastAttempt ? "Buat QRIS Baru" : "Tampilkan QRIS"}
+            {pending ? "Menyiapkan QRIS…" : state.lastAttempt === "FAILED" ? "Coba Bayar Lagi" : state.lastAttempt === "EXPIRED" ? "Buat QRIS Baru" : "Tampilkan QRIS"}
           </Button>
         </>
       )}
@@ -140,6 +185,11 @@ function TransferBlock({ state }: { state: CustomerPaymentState }) {
   if (!transfer) return null;
   return (
     <div className="flex flex-col gap-3">
+      <p>
+        {transfer.purpose === "REMAINING"
+          ? "Silakan transfer sisa pembayaran sesuai rekening. Pelunasan tercatat setelah dikonfirmasi admin."
+          : "Silakan lakukan transfer sesuai rekening pembayaran. Setelah pembayaran dikonfirmasi, pesanan akan diproses."}
+      </p>
       <p>
         Transfer <strong>{formatRupiah(transfer.amount)}</strong> ({PAYMENT_PURPOSE_LABEL[transfer.purpose]}) ke rekening berikut
         {transfer.expiresAt ? <> sebelum {formatWibDateTime(transfer.expiresAt)} WIB</> : null}:
@@ -212,12 +262,24 @@ export function PaymentPanel({
   return (
     <section aria-labelledby="bayar" className="flex flex-col gap-3 rounded-card border-2 border-accent bg-surface p-5 text-sm sm:p-6">
       <h2 id="bayar" className="text-xl">
-        {state.stage === "PAY_REMAINING" ? "Pelunasan" : "Lakukan Pembayaran"}
+        {state.stage === "PAY_REMAINING"
+          ? "Pelunasan"
+          : state.stage === "VERIFYING"
+            ? "Verifikasi Pembayaran"
+            : state.stage === "CASH_AT_PICKUP"
+              ? "Pembayaran Saat Pengambilan"
+              : "Lakukan Pembayaran"}
       </h2>
 
-      {state.stage === "CASH_AT_PICKUP" ? <p>Bayar penuh {formatRupiah(state.amountDue)} secara tunai saat mengambil pesanan.</p> : null}
+      {state.stage === "CASH_AT_PICKUP" ? (
+        <p>
+          Bayar penuh <strong>{formatRupiah(state.amountDue)}</strong> secara tunai saat mengambil pesanan. Tidak perlu membayar online.
+        </p>
+      ) : null}
 
-      {state.stage === "VERIFYING" ? <p role="status">Bukti pembayaran sedang diverifikasi admin. Kami akan memperbarui status setelah diperiksa.</p> : null}
+      {state.stage === "VERIFYING" ? (
+        <p role="status">Bukti pembayaran sudah diterima dan sedang diperiksa oleh admin. Pembayaran dianggap berhasil setelah disetujui.</p>
+      ) : null}
 
       {state.stage === "PAY_INITIAL" && state.method === "QRIS" ? <QrisBlock state={state} qrDataUrl={qrDataUrl} requestQris={requestQris} simulate={simulate} /> : null}
       {state.stage === "PAY_INITIAL" && state.method === "BANK_TRANSFER" ? <TransferBlock state={state} /> : null}

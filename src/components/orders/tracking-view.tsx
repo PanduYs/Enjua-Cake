@@ -1,38 +1,46 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { PAYMENT_METHOD_LABEL, PAYMENT_OPTION_LABEL } from "@/lib/copy/checkout";
-import { CUSTOMER_CANCELLATION_REASON, ORDER_STATUS_LABEL, ORDER_TIMELINE, PAYMENT_STATUS_LABEL } from "@/lib/copy/orders";
 import { formatIsoDateLong } from "@/lib/format/date";
 import { formatRupiah } from "@/lib/format/rupiah";
+import { customerProgress, customerStatus, type ProgressStep } from "@/lib/orders/customer-status";
 import type { TrackingView as View } from "@/lib/orders/tracking-view";
 
-function Timeline({ status }: { status: View["orderStatus"] }) {
-  const current = ORDER_TIMELINE.indexOf(status as (typeof ORDER_TIMELINE)[number]);
+import { OrderStatusSummary } from "./order-status-summary";
+
+const STEP_ICON: Record<ProgressStep["state"], string> = { done: "✓", current: "●", todo: "○" };
+const STEP_SR: Record<ProgressStep["state"], string> = { done: "selesai", current: "tahap saat ini", todo: "belum" };
+
+function Progress({ steps }: { steps: ProgressStep[] }) {
   return (
-    <ol className="grid gap-2 sm:grid-cols-5" aria-label="Progres pesanan">
-      {ORDER_TIMELINE.map((step, index) => {
-        const done = index < current;
-        const active = index === current;
-        return (
-          <li
-            key={step}
-            aria-current={active ? "step" : undefined}
-            className={`flex items-center gap-2 rounded-control border px-3 py-2 text-sm ${
-              active
-                ? "border-primary bg-primary font-semibold text-primary-foreground"
-                : done
-                  ? "border-border bg-badge-ready"
-                  : "border-border bg-background text-muted-foreground"
+    <ol className="flex flex-col" aria-label="Progres pesanan">
+      {steps.map((step, index) => (
+        <li key={step.key} aria-current={step.state === "current" ? "step" : undefined} className="relative flex gap-3 pb-3 last:pb-0">
+          {index < steps.length - 1 ? (
+            <span aria-hidden="true" className={`absolute top-7 left-[0.8125rem] h-[calc(100%-1.5rem)] w-0.5 ${step.state === "done" ? "bg-success" : "bg-border"}`} />
+          ) : null}
+          <span
+            aria-hidden="true"
+            className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+              step.state === "done"
+                ? "bg-success text-surface"
+                : step.state === "current"
+                  ? "bg-primary text-primary-foreground ring-4 ring-pastel-peach"
+                  : "border-2 border-border bg-background text-muted-foreground"
             }`}
           >
-            <span aria-hidden="true">{done ? "✓" : index + 1}</span>
-            <span>
-              {ORDER_STATUS_LABEL[step]}
-              {done ? <span className="sr-only"> (selesai)</span> : null}
+            {STEP_ICON[step.state]}
+          </span>
+          <span className="flex flex-col pt-0.5">
+            <span className={step.state === "current" ? "font-semibold" : step.state === "todo" ? "text-muted-foreground" : ""}>
+              {step.label}
+              <span className="sr-only"> ({STEP_SR[step.state]})</span>
             </span>
-          </li>
-        );
-      })}
+            {step.note ? <span className="text-xs text-muted-foreground">{step.note}</span> : null}
+          </span>
+        </li>
+      ))}
     </ol>
   );
 }
@@ -47,12 +55,25 @@ export function TrackingView({
   whatsapp: { question: string | null; cancellation: string | null };
   paymentSlot?: ReactNode;
 }) {
-  const cancelled = view.orderStatus === "CANCELLED";
+  const input = {
+    orderStatus: view.orderStatus,
+    paymentStatus: view.paymentStatus,
+    paymentMethod: view.paymentMethod,
+    paymentOption: view.paymentOption,
+    grandTotal: view.grandTotal,
+    dpAmount: view.dpAmount,
+    paidAmount: view.paidAmount,
+    remainingAmount: view.remainingAmount,
+    cancellation: view.cancellation,
+    refundedAmount: view.refundedAmount,
+  };
+  const status = customerStatus(input);
+  const progress = customerProgress(input);
 
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-labelledby="status-pesanan" className="flex flex-col gap-4 rounded-card bg-surface p-5 sm:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <section aria-labelledby="status-pesanan" className="flex flex-col gap-3 rounded-card bg-surface p-4 sm:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 id="status-pesanan" className="text-xl">
             Pesanan{" "}
             <span className="font-mono" data-testid="tracking-order-number">
@@ -61,34 +82,36 @@ export function TrackingView({
           </h2>
           <p className="text-sm text-muted-foreground">a.n. {view.customerName}</p>
         </div>
-        <p className="text-lg" data-testid="tracking-status">
-          Status: <strong>{ORDER_STATUS_LABEL[view.orderStatus]}</strong>
+        <p className="text-sm sm:text-base" data-testid="tracking-headline">
+          {status.headline}
         </p>
-        {cancelled ? (
-          <p role="status" className="rounded-control border border-danger bg-background px-4 py-3 text-sm">
-            {CUSTOMER_CANCELLATION_REASON[view.cancellation ?? "ADMIN"]}
-          </p>
-        ) : (
-          <Timeline status={view.orderStatus} />
-        )}
+        <OrderStatusSummary status={status} testIds={{ payment: "tracking-payment-status", processing: "tracking-status" }} />
+        {status.action === "NEW_ORDER" ? (
+          <Link href="/produk" className="inline-flex min-h-11 items-center justify-center self-start rounded-full bg-primary px-5 font-semibold text-primary-foreground">
+            Buat Pesanan Baru
+          </Link>
+        ) : null}
       </section>
 
       {paymentSlot}
 
-      <section aria-labelledby="pembayaran" className="flex flex-col gap-2 rounded-card bg-surface p-5 text-sm sm:p-6">
+      {progress ? (
+        <section aria-labelledby="progres" className="flex flex-col gap-3 rounded-card bg-surface p-4 sm:p-6">
+          <h2 id="progres" className="text-xl">
+            Progres
+          </h2>
+          <Progress steps={progress} />
+        </section>
+      ) : null}
+
+      <section aria-labelledby="pembayaran" className="flex flex-col gap-2 rounded-card bg-surface p-4 text-sm sm:p-6">
         <h2 id="pembayaran" className="mb-1 text-xl">
-          Pembayaran
+          Rincian Pembayaran
         </h2>
-        <p>
-          Status pembayaran:{" "}
-          <strong data-testid="tracking-payment-status">
-            {PAYMENT_STATUS_LABEL[view.paymentStatus as keyof typeof PAYMENT_STATUS_LABEL] ?? view.paymentStatus}
-          </strong>
-        </p>
         <p>
           Metode: {PAYMENT_METHOD_LABEL[view.paymentMethod]} · {PAYMENT_OPTION_LABEL[view.paymentOption]}
         </p>
-        <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
+        <dl className="mt-1 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
           <dt>Total pesanan</dt>
           <dd className="text-right font-semibold">{formatRupiah(view.grandTotal)}</dd>
           {view.dpAmount !== null ? (
@@ -101,17 +124,23 @@ export function TrackingView({
           <dd className="text-right">{formatRupiah(view.paidAmount)}</dd>
           <dt>Sisa pembayaran</dt>
           <dd className="text-right">{formatRupiah(view.remainingAmount)}</dd>
+          {view.refundedAmount > 0 ? (
+            <>
+              <dt>Dana dikembalikan</dt>
+              <dd className="text-right">{formatRupiah(view.refundedAmount)}</dd>
+            </>
+          ) : null}
         </dl>
       </section>
 
-      <section aria-labelledby="detail-pesanan" className="flex flex-col gap-2 rounded-card bg-surface p-5 text-sm sm:p-6">
+      <section aria-labelledby="detail-pesanan" className="flex flex-col gap-2 rounded-card bg-surface p-4 text-sm sm:p-6">
         <h2 id="detail-pesanan" className="mb-1 text-xl">
           Detail Pesanan
         </h2>
         <p>
           Tanggal pickup: <strong>{formatIsoDateLong(view.pickupDate)}</strong>
         </p>
-        <ul className="mt-2 divide-y divide-border">
+        <ul className="mt-1 divide-y divide-border">
           {view.items.map((item, index) => (
             <li key={`${item.name}-${index}`} className="flex justify-between gap-4 py-2">
               <span>
@@ -125,7 +154,7 @@ export function TrackingView({
       </section>
 
       {whatsapp.question || whatsapp.cancellation ? (
-        <section aria-labelledby="bantuan" className="flex flex-col gap-2 rounded-card bg-surface p-5 text-sm sm:p-6">
+        <section aria-labelledby="bantuan" className="flex flex-col gap-2 rounded-card bg-surface p-4 text-sm sm:p-6">
           <h2 id="bantuan" className="mb-1 text-xl">
             Bantuan
           </h2>

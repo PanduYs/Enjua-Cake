@@ -3,7 +3,7 @@ export interface TrackingView {
   orderNumber: string;
   customerName: string;
   orderStatus: "NEW" | "CONFIRMED" | "PROCESSING" | "READY_FOR_PICKUP" | "COMPLETED" | "CANCELLED";
-  paymentStatus: string;
+  paymentStatus: "UNPAID" | "WAITING_PAYMENT" | "WAITING_VERIFICATION" | "PARTIALLY_PAID" | "PAID" | "FAILED" | "EXPIRED" | "REFUNDED" | "PARTIALLY_REFUNDED";
   paymentMethod: "QRIS" | "BANK_TRANSFER" | "CASH";
   paymentOption: "DP_50" | "FULL";
   pickupDate: string;
@@ -15,6 +15,8 @@ export interface TrackingView {
   dpAmount: number | null;
   paidAmount: number;
   remainingAmount: number;
+  /** Completed refunds of counted payments (Rupiah); 0 when none. */
+  refundedAmount: number;
   reservationExpiresAt: string | null;
   /** Customer-safe category only; admin free-text reasons are never exposed. */
   cancellation: "PAYMENT_EXPIRED" | "ADMIN" | null;

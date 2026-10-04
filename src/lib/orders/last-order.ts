@@ -18,6 +18,8 @@ export interface LastOrder {
     remaining: number;
   };
   reservationExpiresAt: string | null;
+  /** Server-priced lines from the confirmation step (absent for orders saved by older versions). */
+  lines?: Array<{ name: string; quantity: number; lineSubtotal: number }>;
 }
 
 const KEY = "enjua-last-order";

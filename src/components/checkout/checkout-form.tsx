@@ -128,6 +128,7 @@ export function CheckoutForm({
               paymentOption: order.paymentOption,
               payment: order.payment,
               reservationExpiresAt: order.reservationExpiresAt,
+              lines: summary?.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineSubtotal: l.lineSubtotal })),
             }
           : placedRef.current;
         if (!placed) {

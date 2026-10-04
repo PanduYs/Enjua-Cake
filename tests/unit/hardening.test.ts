@@ -87,4 +87,71 @@ describe("environment guards", () => {
     vi.resetModules();
     await expect(import("@/server/env").then((m) => m.getEnv())).rejects.toThrow(/MIDTRANS_SERVER_KEY/);
   });
+
+  const s3 = {
+    STORAGE_DRIVER: "s3",
+    STORAGE_ENDPOINT: "https://s3.example.test",
+    STORAGE_REGION: "auto",
+    STORAGE_ACCESS_KEY_ID: "key-id",
+    STORAGE_SECRET_ACCESS_KEY: "secret-key",
+    STORAGE_PUBLIC_BUCKET: "public",
+    STORAGE_PRIVATE_BUCKET: "private",
+  };
+  const live = { ...base, ...s3, NODE_ENV: "production", VERCEL_ENV: "production", PAYMENT_PROVIDER: "midtrans", PAYMENT_ENV: "production", MIDTRANS_SERVER_KEY: "Mid-server-live" };
+  const envWith = async (env: Record<string, string | undefined>) => {
+    process.env = env as NodeJS.ProcessEnv;
+    vi.resetModules();
+    return (await import("@/server/env")).getEnv();
+  };
+
+  it("the live site (Vercel Production) accepts real Midtrans + S3 + https", async () => {
+    expect(await envWith(live)).toMatchObject({ PAYMENT_PROVIDER: "midtrans", PAYMENT_ENV: "production", STORAGE_DRIVER: "s3", APP_URL: "https://example.test" });
+  });
+
+  it("C-3: the live site refuses Midtrans sandbox and the mock, even when the mock is allowed", async () => {
+    await expect(envWith({ ...live, PAYMENT_ENV: "sandbox", MIDTRANS_SERVER_KEY: "SB-Mid-server-test" })).rejects.toThrow(/PAYMENT_ENV=production/);
+    await expect(envWith({ ...live, PAYMENT_PROVIDER: "mock", PAYMENT_ENV: "sandbox", ALLOW_MOCK_PAYMENTS: "true" })).rejects.toThrow(/PAYMENT_PROVIDER=midtrans/);
+  });
+
+  it("C-4: the live site refuses local storage, explicit or by default", async () => {
+    await expect(envWith({ ...live, STORAGE_DRIVER: "local" })).rejects.toThrow(/STORAGE_DRIVER=s3/);
+    await expect(envWith({ ...live, STORAGE_DRIVER: undefined })).rejects.toThrow(/STORAGE_DRIVER=s3/);
+  });
+
+  it("C-5: the live site refuses a non-https APP_URL", async () => {
+    await expect(envWith({ ...live, APP_URL: "http://localhost:3000" })).rejects.toThrow(/https/);
+  });
+
+  it("staging (Vercel Preview), E2E/CI production builds and development keep sandbox, mock and local storage", async () => {
+    // Staging on Vercel Preview: Midtrans sandbox with local or S3 storage.
+    expect((await envWith({ ...base, NODE_ENV: "production", VERCEL_ENV: "preview", PAYMENT_PROVIDER: "midtrans", PAYMENT_ENV: "sandbox", MIDTRANS_SERVER_KEY: "SB-Mid-server-test" })).PAYMENT_ENV).toBe(
+      "sandbox",
+    );
+    // E2E/CI: `next start` (production build) outside Vercel with the mock, local storage and http.
+    expect(
+      await envWith({ ...base, APP_URL: "http://localhost:3100", NODE_ENV: "production", PAYMENT_PROVIDER: "mock", ALLOW_MOCK_PAYMENTS: "true", STORAGE_DRIVER: "local" }),
+    ).toMatchObject({ STORAGE_DRIVER: "local", PAYMENT_PROVIDER: "mock" });
+    // Development, even if VERCEL_ENV leaks in (e.g. `vercel env pull`): unchanged.
+    expect((await envWith({ ...base, APP_URL: "http://localhost:3000", NODE_ENV: "development", VERCEL_ENV: "production" })).STORAGE_DRIVER).toBe("local");
+  });
+});
+
+describe("C-5: metadataBase comes from the validated APP_URL", () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+    vi.resetModules();
+  });
+
+  it("uses APP_URL and never falls back to localhost", async () => {
+    process.env = { NODE_ENV: "test", APP_URL: "https://enjuacake.example", DATABASE_URL: "postgres://x", AUTH_SECRET: "a".repeat(32), MOCK_PAYMENT_WEBHOOK_SECRET: "m".repeat(16) } as NodeJS.ProcessEnv;
+    vi.resetModules();
+    const { generateMetadata } = await import("@/app/layout");
+    expect(String(generateMetadata().metadataBase)).toBe("https://enjuacake.example/");
+
+    process.env = { NODE_ENV: "test", DATABASE_URL: "postgres://x", AUTH_SECRET: "a".repeat(32) } as NodeJS.ProcessEnv;
+    vi.resetModules();
+    const layout = await import("@/app/layout");
+    expect(() => layout.generateMetadata()).toThrow(/APP_URL/);
+  });
 });

@@ -27,6 +27,8 @@ const envSchema = z.object({
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   CRON_SECRET: z.string().min(16).optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  /** Set by Vercel: "production" only on the live site's Production deployment (staging uses Preview). */
+  VERCEL_ENV: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -43,6 +45,16 @@ export function getEnv(): Env {
     if (!parsed.success) {
       const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
       throw new Error(`Invalid server environment: ${issues}`);
+    }
+    // The live site (Vercel Production deployment) must take real payments, keep files in
+    // object storage and use its public https URL — the same rules as `preflight --target=production`.
+    // NODE_ENV alone cannot tell it apart: E2E (`next start`) and staging (Vercel Preview) are production builds too.
+    if (parsed.data.NODE_ENV === "production" && parsed.data.VERCEL_ENV === "production") {
+      if (parsed.data.PAYMENT_PROVIDER !== "midtrans" || parsed.data.PAYMENT_ENV !== "production") {
+        throw new Error("Vercel Production requires PAYMENT_PROVIDER=midtrans with PAYMENT_ENV=production (sandbox and mock are for Preview/staging)");
+      }
+      if (parsed.data.STORAGE_DRIVER !== "s3") throw new Error("Vercel Production requires STORAGE_DRIVER=s3 (the local filesystem is not persistent)");
+      if (!parsed.data.APP_URL.startsWith("https://")) throw new Error("Vercel Production requires APP_URL to be the public https:// URL");
     }
     if (parsed.data.NODE_ENV === "production" && parsed.data.PAYMENT_ENV === "production" && parsed.data.PAYMENT_PROVIDER === "mock") {
       throw new Error("MockProvider must not be used with PAYMENT_ENV=production");

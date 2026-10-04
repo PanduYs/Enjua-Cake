@@ -1,7 +1,18 @@
 # Deployment — Enjua Cake's
 
-Panduan teknis untuk staging dan production (IMPLEMENTATION-PLAN §36–§38). **Hosting
-belum diputuskan (TD-17).** Repositori mendukung kedua opsi tanpa mengunci pilihan:
+Panduan teknis untuk staging dan production (IMPLEMENTATION-PLAN §36–§38).
+
+**Keputusan hosting (TD-17) — final:**
+
+- Target hosting: **Vercel** (Opsi A).
+- Production: **Vercel Production deployment**.
+- Staging: **Vercel Preview deployment** pada project yang sama.
+- Database production: **Supabase PostgreSQL**.
+- Storage production: **S3-compatible storage** (`STORAGE_DRIVER=s3`).
+- Payment production: **Midtrans Production** (`PAYMENT_PROVIDER=midtrans`, `PAYMENT_ENV=production`).
+
+Aturan env per environment: lihat §1 "Aturan per environment". Tabel di bawah tetap
+dipertahankan sebagai referensi; repositori masih mendukung kedua opsi tanpa mengunci pilihan:
 
 | | Opsi A — managed (rekomendasi plan) | Opsi B — self-managed |
 |---|---|---|
@@ -33,6 +44,43 @@ Opsional: `DATABASE_POOL_MAX`, `LOG_LEVEL`. Khusus staging dengan MockProvider:
 Nilai bisnis (cutoff, kapasitas, rekening, WhatsApp, alamat, dll.) **bukan** env —
 diisi admin di **/admin/pengaturan**.
 
+### Aturan per environment (target: Vercel + Supabase PostgreSQL + S3-compatible + Midtrans)
+
+`NODE_ENV=production` saja **tidak** menandakan production sungguhan: setiap build
+Vercel (Production maupun Preview) dan `next start` di E2E/CI juga `NODE_ENV=production`.
+Penanda situs live adalah **`VERCEL_ENV=production`**, yang diisi otomatis oleh Vercel
+hanya pada Production deployment — tidak perlu (dan jangan) diset manual.
+
+| | Production | Staging | E2E / CI |
+|---|---|---|---|
+| Deployment | Vercel **Production** deployment | Vercel **Preview** deployment, project yang sama | `next start` lokal/CI (`playwright.config.ts`) |
+| `VERCEL_ENV` | `production` (otomatis) | `preview` (otomatis) | tidak ada |
+| `PAYMENT_PROVIDER` / `PAYMENT_ENV` | `midtrans` / `production` | `midtrans` / `sandbox` (atau mock untuk UAT) | `mock` (+ `ALLOW_MOCK_PAYMENTS=true`) |
+| `STORAGE_DRIVER` | `s3` | `s3` dengan bucket staging terpisah (lihat catatan) | `local` |
+| `APP_URL` | `https://<domain>` | `https://` URL Preview/staging | `http://localhost:<port>` |
+
+**Production** — saat `NODE_ENV=production` **dan** `VERCEL_ENV=production`, aplikasi
+menolak start (`src/server/env.ts`) bila `PAYMENT_PROVIDER` bukan `midtrans` dengan
+`PAYMENT_ENV=production`, `STORAGE_DRIVER` bukan `s3`, atau `APP_URL` bukan https.
+Jadi production **tidak boleh** memakai Midtrans sandbox, MockProvider (walau
+`ALLOW_MOCK_PAYMENTS=true`), atau local storage. Aturan ini sama dengan
+`npm run preflight -- --target=production`; preflight tetap wajib dijalankan sebelum deploy.
+
+**Staging** — pakai **Preview deployment pada project Vercel yang sama**, dengan env
+var yang di-scope ke *Preview* di pengaturan project (key sandbox Midtrans, database dan
+bucket staging). **Jangan** memakai Production deployment (termasuk project Vercel
+terpisah yang di-deploy sebagai Production) untuk staging: di sana `VERCEL_ENV=production`,
+sehingga Midtrans sandbox akan ditolak.
+Catatan storage: guard mengizinkan `STORAGE_DRIVER=local` di Preview, tetapi filesystem
+fungsi Vercel tidak persisten (dan di luar `/tmp` hanya-baca), sehingga upload foto produk
+dan bukti transfer di staging Vercel akan gagal atau hilang. `local` cocok untuk E2E/CI dan
+development; staging yang menguji upload memakai `s3` dengan bucket staging terpisah.
+
+**E2E / CI** — `next start` menjalankan production build sehingga `NODE_ENV=production`,
+tetapi tanpa `VERCEL_ENV=production`, jadi tidak dianggap production sungguhan dan
+guard di atas tidak berlaku. Konfigurasi E2E (`playwright.config.ts`: mock + `local` +
+`http://localhost`) sudah lulus dan **jangan diubah** untuk menyesuaikan guard.
+
 ## 2. Database & migrasi
 
 - Migrasi forward-only, dicek oleh `npm run db:check-migrations` (CI) — statement
@@ -62,6 +110,11 @@ Endpoint: `GET|POST /api/cron/expire-reservations` dengan header
 Kebenaran kapasitas tidak bergantung pada cron (lazy expiry); cron merapikan status.
 
 - Opsi A: `vercel.json` sudah berisi jadwal; Vercel mengirim `CRON_SECRET` otomatis.
+  Vercel Cron dipakai untuk **Production** (cron Vercel hanya memanggil Production
+  deployment). Staging di Preview **tidak** bergantung pada Vercel Cron untuk kebenaran
+  kapasitas: reservasi kedaluwarsa tidak dihitung saat menghitung kapasitas, dan status
+  order dirapikan secara lazy saat order dibuka. Bila staging perlu status yang rapi
+  tanpa membuka order, panggil endpoint di atas secara manual dengan `CRON_SECRET` staging.
 - Opsi B (crontab host; secret dibaca dari file env, tidak tertulis di crontab):
 
 ```cron

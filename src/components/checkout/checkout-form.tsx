@@ -15,6 +15,7 @@ import {
 } from "@/lib/copy/checkout";
 import { cartLinesForServer, useCartStore } from "@/lib/cart/store";
 import { formatRupiah } from "@/lib/format/rupiah";
+import { randomUuid } from "@/lib/random-uuid";
 import { CUSTOMER_NAME_MAX, NOTES_MAX } from "@/lib/validation/checkout";
 
 import { TextField } from "../ui/text-field";
@@ -40,7 +41,7 @@ export function CheckoutForm({
   const router = useRouter();
   const formId = useId();
   // One key per checkout attempt: a double click or retry can never create two orders (TD-15).
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(randomUuid);
   const placedRef = useRef<LastOrder | null>(null);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [placing, startPlacing] = useTransition();

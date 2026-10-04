@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 
 import { addProductToCart, clickDayWithStatus, clickDayWithStatusFromStart, tamperPlaceOrderPickupDate, wibIsoDate } from "./helpers";
 
@@ -164,6 +164,72 @@ test.describe("Checkout", () => {
       await expect(page).toHaveURL(/\/checkout$/);
     });
   }
+
+  test("phone over plain-http LAN (no crypto.randomUUID): checkout works; a retry reuses the key; a new attempt gets a new one (TD-15)", async ({ browser }) => {
+    // crypto.randomUUID is a [SecureContext] API: absent at http://<LAN-IP>:3000 on a phone, which made
+    // CheckoutForm throw "crypto.randomUUID is not a function". Reproduce that API surface on a phone profile.
+    const context = await browser.newContext({ ...devices["Pixel 7"] });
+    await context.addInitScript(() => {
+      Object.defineProperty(Crypto.prototype, "randomUUID", { value: undefined, configurable: true });
+    });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+
+    // Record the idempotency key of every "Buat Pesanan" call (args: [input, key]); reject the first one
+    // server-side (date tampered to the blocked date) so the customer has to retry the same attempt.
+    const keys: string[] = [];
+    let tamperNext = true;
+    await page.route("**/checkout", async (route) => {
+      const request = route.request();
+      const body = request.postData() ?? "";
+      const match = request.method() === "POST" && request.headers()["next-action"] ? /,"([0-9a-f-]{36})"\]$/.exec(body) : null;
+      if (!match) return route.continue();
+      keys.push(match[1]!);
+      if (tamperNext) {
+        tamperNext = false;
+        return route.continue({ postData: body.replace(/"pickupDate":"[^"]*"/, `"pickupDate":"${wibIsoDate(10)}"`) });
+      }
+      return route.continue();
+    });
+
+    const checkout = async (p: Page, name: string) => {
+      await p.goto("/produk/contoh-cookies-butter");
+      await p.getByRole("button", { name: "Tambah ke Keranjang" }).tap();
+      await expect(p.getByRole("status").filter({ hasText: "ditambahkan ke keranjang" })).toBeVisible();
+      await p.goto("/checkout");
+      expect(await p.evaluate(() => typeof crypto.randomUUID)).toBe("undefined");
+      await clickDayWithStatus(p, "tersedia");
+      await p.getByLabel("Nama").fill(name);
+      await p.getByLabel("Nomor WhatsApp").fill("0812 3456 7890");
+      await p.getByRole("radio", { name: /Cash saat Pickup/ }).check();
+      await p.getByRole("button", { name: "Lanjut ke Konfirmasi" }).tap();
+      await expect(p.getByRole("region", { name: "Konfirmasi Pesanan" })).toBeVisible();
+    };
+
+    await checkout(page, "Pelanggan HP");
+    await page.getByRole("region", { name: "Konfirmasi Pesanan" }).getByRole("button", { name: "Buat Pesanan" }).tap();
+    await expect(page.getByText("Tanggal ini tidak tersedia. Silakan pilih tanggal lain.")).toBeVisible();
+    // Retry of the same attempt: pick a date again and place the order (double tap: still one key).
+    await clickDayWithStatus(page, "tersedia");
+    await page.getByRole("button", { name: "Lanjut ke Konfirmasi" }).tap();
+    await page.getByRole("region", { name: "Konfirmasi Pesanan" }).getByRole("button", { name: "Buat Pesanan" }).dblclick();
+    await expect(page).toHaveURL(/\/pesanan\/sukses$/);
+    expect(keys.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+
+    // A genuinely new checkout attempt (new CheckoutForm) gets a new key.
+    const firstAttemptKey = keys[0];
+    keys.length = 0;
+    await checkout(page, "Pelanggan HP Kedua");
+    await page.getByRole("region", { name: "Konfirmasi Pesanan" }).getByRole("button", { name: "Buat Pesanan" }).tap();
+    await expect(page).toHaveURL(/\/pesanan\/sukses$/);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).not.toBe(firstAttemptKey);
+    expect(errors.filter((e) => /randomUUID/.test(e))).toEqual([]);
+    await context.close();
+  });
 
   test("Ready Stock cart allows Cash (full payment only) and validates required fields", async ({ page }) => {
     await addProductToCart(page, "contoh-cookies-butter");

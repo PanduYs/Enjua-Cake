@@ -11,6 +11,7 @@ import { describeOverride, MANUAL_DATE_BLOCKER, OVERRIDE_LABEL } from "@/lib/cop
 import { CART_ISSUE_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_OPTION_LABEL } from "@/lib/copy/checkout";
 import { PRODUCT_TYPE_LABEL, SOLD_OUT_LABEL } from "@/lib/format/labels";
 import { formatRupiah } from "@/lib/format/rupiah";
+import { randomUuid } from "@/lib/random-uuid";
 import { CUSTOMER_NAME_MAX, NOTES_MAX } from "@/lib/validation/checkout";
 
 import { SelectField, TextAreaField } from "./fields";
@@ -41,7 +42,7 @@ export function ManualOrderForm({
   placeOrder: typeof placeManualOrderAction;
   loadCapacity: typeof capacityForDateAction;
 }) {
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState(randomUuid);
   const [lines, setLines] = useState<Array<{ productId: string; quantity: string }>>([{ productId: "", quantity: "1" }]);
   const [customerName, setCustomerName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -105,7 +106,7 @@ export function ManualOrderForm({
             variant="secondary"
             onClick={() => {
               setResult(null);
-              setIdempotencyKey(crypto.randomUUID());
+              setIdempotencyKey(randomUuid());
               setLines([{ productId: "", quantity: "1" }]);
               setCustomerName("");
               setWhatsapp("");

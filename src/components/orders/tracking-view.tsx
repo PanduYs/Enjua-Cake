@@ -8,6 +8,7 @@ import { customerProgress, customerStatus, type ProgressStep } from "@/lib/order
 import type { TrackingView as View } from "@/lib/orders/tracking-view";
 
 import { OrderStatusSummary } from "./order-status-summary";
+import { PriceSummary, UnitPrice } from "./price-display";
 
 const STEP_ICON: Record<ProgressStep["state"], string> = { done: "✓", current: "●", todo: "○" };
 const STEP_SR: Record<ProgressStep["state"], string> = { done: "selesai", current: "tahap saat ini", todo: "belum" };
@@ -143,14 +144,17 @@ export function TrackingView({
         <ul className="mt-1 divide-y divide-border">
           {view.items.map((item, index) => (
             <li key={`${item.name}-${index}`} className="flex justify-between gap-4 py-2">
-              <span>
-                {item.name} × {item.quantity}
+              <span className="flex flex-col">
+                <span>
+                  {item.name} × {item.quantity}
+                </span>
+                <UnitPrice normal={item.unitPrice} effective={item.effectiveUnitPrice} />
               </span>
-              <span>{formatRupiah(item.lineSubtotal)}</span>
+              <span className="whitespace-nowrap">{formatRupiah(item.lineSubtotal)}</span>
             </li>
           ))}
         </ul>
-        {view.discountTotal > 0 ? <p>Diskon: −{formatRupiah(view.discountTotal)}</p> : null}
+        <PriceSummary subtotal={view.subtotal} discountTotal={view.discountTotal} total={view.grandTotal} className="border-t border-border pt-2" />
       </section>
 
       {whatsapp.question || whatsapp.cancellation ? (

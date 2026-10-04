@@ -204,7 +204,8 @@ export interface CheckoutSummary {
   paymentMethod: PaymentMethod;
   paymentOption: PaymentOption;
   hasPreorder: boolean;
-  lines: Array<{ productId: string; name: string; quantity: number; effectiveUnitPrice: number; lineSubtotal: number; productType: "READY_STOCK" | "PRE_ORDER" }>;
+  /** `unitPrice` is the normal price, shown struck through when a sale price applies. */
+  lines: Array<{ productId: string; name: string; quantity: number; unitPrice: number; effectiveUnitPrice: number; lineSubtotal: number; productType: "READY_STOCK" | "PRE_ORDER" }>;
   subtotal: number;
   discountTotal: number;
   payment: PaymentBreakdown;
@@ -276,6 +277,7 @@ export async function prepareCheckout(
         name: names.get(line.productId)!.name,
         productType: names.get(line.productId)!.productType,
         quantity: line.quantity,
+        unitPrice: line.unitPrice,
         effectiveUnitPrice: line.effectiveUnitPrice,
         lineSubtotal: line.lineSubtotal,
       })),

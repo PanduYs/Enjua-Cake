@@ -95,6 +95,11 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     await expect(page.getByTestId("tracking-order-number")).toHaveText(orderNumber);
     await expect(page.getByTestId("tracking-payment-status")).toHaveText("Menunggu Pembayaran DP");
     await expectNoHorizontalOverflow(page);
+    // One discounted item (Rp250.000 → Rp225.000): no "item Rp225.000, Diskon −Rp25.000" double-discount reading.
+    const detail = page.getByRole("region", { name: "Detail Pesanan" });
+    await expect(detail.getByTestId("price-summary")).toContainText(/Subtotal\s*Rp250\.000\s*Diskon\s*−Rp25\.000\s*Total\s*Rp225\.000/);
+    await expect(detail.locator("s")).toContainText("Rp250.000");
+    await expect(detail).not.toContainText("Diskon:");
     const panel = page.getByRole("region", { name: "Lakukan Pembayaran" });
     await panel.getByRole("button", { name: "Tampilkan QRIS" }).click();
     await expect(panel.getByTestId("qris-image")).toBeVisible();
@@ -191,6 +196,11 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     const admin = await (await browser.newContext()).newPage();
     await loginOrdersAdmin(admin);
     await openAdminOrder(admin, orderNumber);
+    // Admin sees the same pricing concept: normal price struck through, line already discounted, Subtotal − Diskon = Total.
+    const adminItems = admin.getByRole("region", { name: "Item", exact: true });
+    await expect(adminItems).toContainText(/Contoh Cookies Butter × 2.*Rp60\.000.*Rp54\.000 \/ item\s*Rp108\.000/);
+    await expect(adminItems.locator("s")).toContainText("Rp60.000");
+    await expect(admin.getByRole("region", { name: "Pembayaran", exact: true })).toContainText(/Subtotal\s*Rp120\.000\s*Diskon\s*−Rp12\.000\s*Total\s*Rp108\.000/);
     for (const [button, status] of [
       ["Konfirmasi Pesanan", "Dikonfirmasi"],
       ["Proses Pesanan", "Pesanan Diproses"],

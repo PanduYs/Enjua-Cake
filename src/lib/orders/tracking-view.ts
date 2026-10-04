@@ -8,7 +8,9 @@ export interface TrackingView {
   paymentOption: "DP_50" | "FULL";
   pickupDate: string;
   createdAt: string;
-  items: Array<{ name: string; quantity: number; lineSubtotal: number }>;
+  /** Snapshots: `unitPrice` normal, `effectiveUnitPrice` paid per unit, `lineSubtotal` = effective × quantity. */
+  items: Array<{ name: string; quantity: number; unitPrice: number; effectiveUnitPrice: number; lineSubtotal: number }>;
+  /** Normal prices × quantity; `subtotal − discountTotal = grandTotal`. */
   subtotal: number;
   discountTotal: number;
   grandTotal: number;

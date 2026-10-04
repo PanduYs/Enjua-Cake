@@ -138,6 +138,8 @@ describe("placeOrder (IMPLEMENTATION-PLAN §11.1)", () => {
       paymentStatus: "WAITING_PAYMENT",
       source: "WEBSITE",
       customerPhone: "+6281234567890",
+      subtotal: 500_000,
+      discountTotal: 50_000,
       grandTotal: 450_000,
       dpAmount: 225_000,
       paidAmount: 0,
@@ -163,7 +165,12 @@ describe("placeOrder (IMPLEMENTATION-PLAN §11.1)", () => {
     // Snapshot survives later product edits (FD-40).
     await handle.db.update(products).set({ price: 999_000, name: "Renamed" }).where(eq(products.id, ids.cheesecake!));
     const view = await getTrackingView(handle.db, { orderId: o.orderId, tokenRef: trackingTokenRef(row.trackingTokenHash) }, clock);
-    expect(view?.items).toEqual([{ name: "Cheesecake", quantity: 2, lineSubtotal: 450_000 }]);
+    // Prices shown on tracking are the snapshots (normal 250.000, paid 225.000), not the edited product.
+    expect(view?.items).toEqual([{ name: "Cheesecake", quantity: 2, unitPrice: 250_000, effectiveUnitPrice: 225_000, lineSubtotal: 450_000 }]);
+    // Subtotal at normal price − discount = total paid; the line amount already includes the discount.
+    expect(view).toMatchObject({ subtotal: 500_000, discountTotal: 50_000, grandTotal: 450_000 });
+    expect(view!.subtotal - view!.discountTotal).toBe(view!.grandTotal);
+    expect(view!.items.reduce((sum, i) => sum + i.lineSubtotal, 0)).toBe(view!.grandTotal);
 
     const txs = await handle.db.select().from(paymentTransactions).where(eq(paymentTransactions.orderId, o.orderId));
     expect(txs).toEqual([

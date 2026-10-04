@@ -10,6 +10,7 @@ import { cartLinesForServer, useCartStore } from "@/lib/cart/store";
 import { PRODUCT_TYPE_LABEL } from "@/lib/format/labels";
 import { formatRupiah } from "@/lib/format/rupiah";
 
+import { PriceSummary, UnitPrice } from "../orders/price-display";
 import { CakeIcon } from "../public/icons";
 import { QuantityStepper } from "./quantity-stepper";
 
@@ -53,7 +54,13 @@ export function CartView({ validate }: { validate: typeof validateCartAction }) 
     );
   }
 
-  const issueOf = (productId: string) => validation?.lines.find((l) => l.productId === productId)?.issue ?? null;
+  const lineOf = (productId: string) => validation?.lines.find((l) => l.productId === productId);
+  const issueOf = (productId: string) => lineOf(productId)?.issue ?? null;
+  // Normal price from the server's validation; until it arrives only the price paid is shown.
+  const normalPriceOf = (productId: string, effective: number) => {
+    const price = lineOf(productId)?.product?.price;
+    return price && price.effective === effective && price.original !== null ? price.original : effective;
+  };
   const fresh = validation && validation.lines.length === items.length;
   const canCheckout = Boolean(fresh && validation.canCheckout && !pending);
 
@@ -75,7 +82,7 @@ export function CartView({ validate }: { validate: typeof validateCartAction }) 
                   <span className={`w-fit rounded-full px-2 py-0.5 text-xs font-semibold ${item.productType === "READY_STOCK" ? "bg-badge-ready" : "bg-badge-preorder"}`}>
                     {PRODUCT_TYPE_LABEL[item.productType]}
                   </span>
-                  <span className="text-sm text-muted-foreground">{formatRupiah(item.unitPrice)} / item</span>
+                  <UnitPrice normal={normalPriceOf(item.productId, item.unitPrice)} effective={item.unitPrice} />
                   {issue ? (
                     <p role="alert" className="text-sm font-medium text-danger">
                       {CART_ISSUE_LABEL[issue]}
@@ -111,20 +118,9 @@ export function CartView({ validate }: { validate: typeof validateCartAction }) 
           Ringkasan
         </h2>
         {fresh ? (
-          <dl className="flex flex-col gap-2 text-sm" aria-live="polite">
-            <div className="flex justify-between">
-              <dt>Subtotal</dt>
-              <dd>{formatRupiah(validation.totals.subtotal)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Diskon</dt>
-              <dd>{validation.totals.discountTotal > 0 ? `-${formatRupiah(validation.totals.discountTotal)}` : formatRupiah(0)}</dd>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
-              <dt>Total</dt>
-              <dd>{formatRupiah(validation.totals.grandTotal)}</dd>
-            </div>
-          </dl>
+          <div aria-live="polite">
+            <PriceSummary subtotal={validation.totals.subtotal} discountTotal={validation.totals.discountTotal} total={validation.totals.grandTotal} />
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground" aria-busy="true">
             Memeriksa harga terbaru…

@@ -129,6 +129,29 @@ describe("previewCheckout", () => {
     });
   });
 
+  it("summary lines carry the normal and the paid unit price from the database; client prices are ignored", async () => {
+    const r = await previewCheckout(
+      deps(),
+      base({
+        items: [
+          { productId: ids.cheesecake, quantity: 2, price: 1 },
+          { productId: ids.brownies, quantity: 1, price: 1 },
+        ],
+        paymentMethod: "QRIS",
+        pickupDate: "2026-10-04",
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.summary.lines.map(({ name, quantity, unitPrice, effectiveUnitPrice, lineSubtotal }) => ({ name, quantity, unitPrice, effectiveUnitPrice, lineSubtotal }))).toEqual([
+      { name: "Cheesecake", quantity: 2, unitPrice: 250_000, effectiveUnitPrice: 225_000, lineSubtotal: 450_000 },
+      { name: "Brownies", quantity: 1, unitPrice: 85_000, effectiveUnitPrice: 85_000, lineSubtotal: 85_000 },
+    ]);
+    // Subtotal at normal prices, discount = difference, total = sum of the (already discounted) lines.
+    expect(r.summary).toMatchObject({ subtotal: 585_000, discountTotal: 50_000 });
+    expect(r.summary.payment.total).toBe(535_000);
+  });
+
   it("DP 50% uses ceil (FD-44)", async () => {
     const r = await previewCheckout(deps(), base({ items: [{ productId: ids.odd, quantity: 1 }], paymentMethod: "QRIS", paymentOption: "DP_50" }));
     expect(r.ok && r.summary.payment).toEqual({ total: 125_555, dpAmount: 62_778, dueNow: 62_778, remaining: 62_777 });

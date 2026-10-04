@@ -13,6 +13,7 @@ import { buildWhatsAppLink } from "@/lib/whatsapp";
 
 import { CopyButton } from "./copy-button";
 import { OrderStatusSummary } from "./order-status-summary";
+import { PriceSummary, UnitPrice } from "./price-display";
 
 const formatTime = (iso: string) =>
   new Intl.DateTimeFormat("id-ID", {
@@ -76,6 +77,11 @@ export function OrderSuccess({ whatsappNumber, businessName }: { whatsappNumber:
     remainingAmount: order.payment.total,
     cancellation: null,
   });
+
+  // Subtotal/Diskon come from the confirmation step; shown only when they add up to the server total.
+  const priced = order.subtotal !== undefined && order.discountTotal !== undefined && order.subtotal - order.discountTotal === order.payment.total;
+  const summarySubtotal = priced ? order.subtotal! : order.payment.total;
+  const summaryDiscount = priced ? order.discountTotal! : 0;
 
   const trackingHref = `/lacak#o=${encodeURIComponent(order.orderNumber)}&t=${encodeURIComponent(order.trackingToken)}`;
   // WhatsApp text carries the order number only, never the access code (FD-77).
@@ -173,18 +179,18 @@ export function OrderSuccess({ whatsappNumber, businessName }: { whatsappNumber:
           <ul className="divide-y divide-border">
             {order.lines.map((line, index) => (
               <li key={`${line.name}-${index}`} className="flex justify-between gap-3 py-1.5">
-                <span>
-                  {line.name} × {line.quantity}
+                <span className="flex flex-col">
+                  <span>
+                    {line.name} × {line.quantity}
+                  </span>
+                  {line.unitPrice !== undefined && line.effectiveUnitPrice !== undefined ? <UnitPrice normal={line.unitPrice} effective={line.effectiveUnitPrice} /> : null}
                 </span>
                 <span className="whitespace-nowrap">{formatRupiah(line.lineSubtotal)}</span>
               </li>
             ))}
           </ul>
         ) : null}
-        <p className="flex justify-between gap-3 font-semibold">
-          <span>Total</span>
-          <span>{formatRupiah(order.payment.total)}</span>
-        </p>
+        <PriceSummary subtotal={summarySubtotal} discountTotal={summaryDiscount} total={order.payment.total} className="border-t border-border pt-2" />
         <p>Tanggal pickup: {formatIsoDateLong(order.pickupDate)}</p>
         <p>
           Pembayaran: {PAYMENT_METHOD_LABEL[order.paymentMethod]} · {PAYMENT_OPTION_LABEL[order.paymentOption]}

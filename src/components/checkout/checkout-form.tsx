@@ -18,6 +18,7 @@ import { formatRupiah } from "@/lib/format/rupiah";
 import { randomUuid } from "@/lib/random-uuid";
 import { CUSTOMER_NAME_MAX, NOTES_MAX } from "@/lib/validation/checkout";
 
+import { PriceSummary, UnitPrice } from "../orders/price-display";
 import { TextField } from "../ui/text-field";
 import { formatIsoDateLong, PickupDatePicker, type DateStatus } from "./pickup-date-picker";
 
@@ -128,7 +129,9 @@ export function CheckoutForm({
               paymentOption: order.paymentOption,
               payment: order.payment,
               reservationExpiresAt: order.reservationExpiresAt,
-              lines: summary?.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineSubtotal: l.lineSubtotal })),
+              lines: summary?.lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPrice: l.unitPrice, effectiveUnitPrice: l.effectiveUnitPrice, lineSubtotal: l.lineSubtotal })),
+              subtotal: summary?.subtotal,
+              discountTotal: summary?.discountTotal,
             }
           : placedRef.current;
         if (!placed) {
@@ -424,7 +427,7 @@ function OrderLines({ summary }: { summary: Extract<Preview, { ok: true }>["summ
           <tr className="border-b border-border text-left">
             <th scope="col" className="py-2">Produk</th>
             <th scope="col" className="py-2 text-right">Jumlah</th>
-            <th scope="col" className="py-2 text-right">Subtotal</th>
+            <th scope="col" className="py-2 text-right">Harga</th>
           </tr>
         </thead>
         <tbody>
@@ -432,7 +435,9 @@ function OrderLines({ summary }: { summary: Extract<Preview, { ok: true }>["summ
             <tr key={line.productId} className="border-b border-border/60">
               <td className="py-2">
                 {line.name}
-                <span className="block text-xs text-muted-foreground">{formatRupiah(line.effectiveUnitPrice)} / item</span>
+                <span className="block">
+                  <UnitPrice normal={line.unitPrice} effective={line.effectiveUnitPrice} />
+                </span>
               </td>
               <td className="py-2 text-right">{line.quantity}</td>
               <td className="py-2 text-right">{formatRupiah(line.lineSubtotal)}</td>
@@ -440,19 +445,8 @@ function OrderLines({ summary }: { summary: Extract<Preview, { ok: true }>["summ
           ))}
         </tbody>
       </table>
+      <PriceSummary subtotal={summary.subtotal} discountTotal={summary.discountTotal} total={payment.total} totalLabel="Total Pesanan" />
       <dl className="flex flex-col gap-1 text-sm">
-        <div className="flex justify-between">
-          <dt>Subtotal</dt>
-          <dd>{formatRupiah(summary.subtotal)}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Diskon</dt>
-          <dd>{summary.discountTotal > 0 ? `-${formatRupiah(summary.discountTotal)}` : formatRupiah(0)}</dd>
-        </div>
-        <div className="flex justify-between text-base font-semibold">
-          <dt>Total Pesanan</dt>
-          <dd>{formatRupiah(payment.total)}</dd>
-        </div>
         {payment.dpAmount !== null ? (
           <>
             <div className="flex justify-between">

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 
 import { RegenerateTokenForm, TransitionControl } from "@/components/admin/transition-control";
+import { UnitPrice } from "@/components/orders/price-display";
 import { PAYMENT_METHOD_LABEL, PAYMENT_OPTION_LABEL } from "@/lib/copy/checkout";
 import { ORDER_STATUS_LABEL, PAYMENT_STATUS_LABEL } from "@/lib/copy/orders";
 import { formatIsoDateLong, formatWibDateTime } from "@/lib/format/date";
@@ -112,10 +113,13 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             <ul className="divide-y divide-border">
               {items.map((item) => (
                 <li key={item.id} className="flex justify-between gap-4 py-2">
-                  <span>
-                    {item.productNameSnapshot} × {item.quantity} @ {formatRupiah(item.effectiveUnitPrice)}
+                  <span className="flex flex-col">
+                    <span>
+                      {item.productNameSnapshot} × {item.quantity}
+                    </span>
+                    <UnitPrice normal={item.unitPriceSnapshot} effective={item.effectiveUnitPrice} />
                   </span>
-                  <span>{formatRupiah(item.lineSubtotal)}</span>
+                  <span className="whitespace-nowrap">{formatRupiah(item.lineSubtotal)}</span>
                 </li>
               ))}
             </ul>

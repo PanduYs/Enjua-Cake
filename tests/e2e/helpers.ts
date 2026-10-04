@@ -86,10 +86,18 @@ export async function expectNoSeriousAxe(page: Page) {
 /** Customer checkout through to the success page; returns what the customer must keep. */
 export async function createOrderViaUi(
   page: Page,
-  options: { customerName: string; slug?: string; quantity?: number; method?: "Cash saat Pickup" | "QRIS" | "Transfer Bank"; option?: "Bayar DP 50%" | "Bayar Penuh" },
+  options: {
+    customerName: string;
+    slug?: string;
+    quantity?: number;
+    method?: "Cash saat Pickup" | "QRIS" | "Transfer Bank";
+    option?: "Bayar DP 50%" | "Bayar Penuh";
+    /** The cart was already filled by the test. */
+    cartReady?: boolean;
+  },
 ) {
   const method = options.method ?? "Cash saat Pickup";
-  await addProductToCart(page, options.slug ?? "contoh-cookies-butter", options.quantity ?? 2);
+  if (!options.cartReady) await addProductToCart(page, options.slug ?? "contoh-cookies-butter", options.quantity ?? 2);
   await page.goto("/checkout");
   await clickDayWithStatus(page, "tersedia");
   await page.getByLabel("Nama").fill(options.customerName);

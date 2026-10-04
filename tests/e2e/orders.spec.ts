@@ -1,12 +1,26 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { createOrderViaUi, expectNoSeriousAxe, loginOrdersAdmin } from "./helpers";
+import { addProductToCart, createOrderViaUi, expectNoSeriousAxe, loginOrdersAdmin } from "./helpers";
 
 const createCashOrder = (page: Page, customerName: string) => createOrderViaUi(page, { customerName });
 
 test.describe("orders (Phase 4)", () => {
   test("checkout creates an order; success page → tracking link opens the order without leaving the code in the URL", async ({ page, context }) => {
-    const { orderNumber } = await createCashOrder(page, "Pelanggan Lacak");
+    // Mixed cart: Cookies Butter ×2 on sale (Rp60.000 → Rp54.000) + Brownies ×1 at normal price (Rp85.000).
+    // Server totals: subtotal 120.000 + 85.000 = 205.000, discount 2 × 6.000 = 12.000, total 108.000 + 85.000 = 193.000.
+    await addProductToCart(page, "contoh-brownies-cokelat", 1);
+    await addProductToCart(page, "contoh-cookies-butter", 2);
+    await page.goto("/keranjang");
+    await expect(page.getByTestId("price-summary")).toContainText(/Subtotal\s*Rp205\.000\s*Diskon\s*−Rp12\.000\s*Total\s*Rp193\.000/);
+    const cartItems = page.getByRole("list", { name: "Isi keranjang" });
+    await expect(cartItems.locator("s")).toHaveCount(1);
+    await expect(cartItems.locator("s")).toContainText("Rp60.000");
+    const { orderNumber } = await createOrderViaUi(page, { customerName: "Pelanggan Lacak", cartReady: true });
+
+    // Success page summary: same server numbers, normal price struck through only on the sale item.
+    const successSummary = page.getByRole("region", { name: "Ringkasan Pesanan" });
+    await expect(successSummary.getByTestId("price-summary")).toContainText(/Subtotal\s*Rp205\.000\s*Diskon\s*−Rp12\.000\s*Total\s*Rp193\.000/);
+    await expect(successSummary.locator("s")).toHaveCount(1);
 
     // Cash (scenario D): recorded, paid at pickup — no online payment is asked for.
     await expect(page.getByTestId("success-payment-status")).toHaveText("Bayar Saat Pengambilan");
@@ -29,6 +43,12 @@ test.describe("orders (Phase 4)", () => {
     await expect(page.getByTestId("tracking-order-number")).toHaveText(orderNumber);
     await expect(page.getByTestId("tracking-status")).toHaveText("Menunggu Konfirmasi Toko");
     await expect(page.getByTestId("tracking-payment-status")).toHaveText("Bayar Saat Pengambilan");
+    // Tracking "Detail Pesanan": line amounts already include the sale price; the summary is Subtotal − Diskon = Total.
+    const detail = page.getByRole("region", { name: "Detail Pesanan" });
+    await expect(detail).toContainText(/Contoh Brownies Cokelat × 1\s*Rp85\.000 \/ item\s*Rp85\.000/);
+    await expect(detail).toContainText(/Contoh Cookies Butter × 2.*Rp60\.000.*Rp54\.000 \/ item\s*Rp108\.000/);
+    await expect(detail.getByTestId("price-summary")).toContainText(/Subtotal\s*Rp205\.000\s*Diskon\s*−Rp12\.000\s*Total\s*Rp193\.000/);
+    await expect(detail).not.toContainText("Diskon:");
     await expect(page.getByRole("region", { name: "Pembayaran Saat Pengambilan" })).toContainText("Tidak perlu membayar online.");
     expect(new URL(page.url()).hash).toBe("");
     await expect(page.getByText("6281234567890")).toHaveCount(0);

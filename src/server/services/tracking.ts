@@ -67,6 +67,8 @@ export async function getTrackingView(db: Database, session: { orderId: string; 
     .select({
       name: orderItems.productNameSnapshot,
       quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPriceSnapshot,
+      effectiveUnitPrice: orderItems.effectiveUnitPrice,
       lineSubtotal: orderItems.lineSubtotal,
     })
     .from(orderItems)

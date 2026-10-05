@@ -83,3 +83,12 @@ describe("Vercel Cron fits the Hobby plan (at most once per day)", () => {
     }
   });
 });
+
+describe("Vercel Functions run next to the database", () => {
+  it("pins the single function region to Singapore (sin1), where Supabase PostgreSQL and Storage live", () => {
+    // The default (iad1) puts ~250 ms between every query and the database in ap-southeast-1.
+    // Hobby allows exactly one region; more would fail the deployment before the build.
+    const config = JSON.parse(readFileSync("vercel.json", "utf8")) as { regions?: string[] };
+    expect(config.regions).toEqual(["sin1"]);
+  });
+});

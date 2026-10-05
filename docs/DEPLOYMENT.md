@@ -25,6 +25,10 @@ dipertahankan sebagai referensi; repositori masih mendukung kedua opsi tanpa men
 Kode hanya bergantung pada PostgreSQL standar, API S3, dan endpoint HTTP, sehingga
 pindah A ↔ B tidak mengubah aplikasi.
 
+Region function Vercel dikunci ke `sin1` di `vercel.json` (`regions`), satu region yang sama dengan
+Supabase `ap-southeast-1`. Default Vercel (`iad1`) menambah ±250 ms per round trip ke database
+dan Storage (terukur di staging); Hobby hanya mengizinkan satu region.
+
 ## 1. Environment
 
 Template: `.env.production.example` (placeholder saja). Nilai asli **hanya** di

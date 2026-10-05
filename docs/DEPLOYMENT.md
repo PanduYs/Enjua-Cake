@@ -89,6 +89,7 @@ guard di atas tidak berlaku. Konfigurasi E2E (`playwright.config.ts`: mock + `lo
   `DATABASE_URL=<koneksi langsung, bukan pooler transaksi> npm run db:migrate`
   (advisory lock mencegah dua migrasi berjalan bersamaan).
 - Aplikasi memakai `prepare: false`, aman untuk pooler mode transaksi (Supabase/PgBouncer).
+- Aplikasi juga mematikan pipelining postgres.js (`max_pipeline: 0`, `src/server/db/client.ts`): Supavisor mode transaksi hanya menjawab query pertama dari beberapa query yang dikirim berurutan di satu koneksi, sisanya menggantung sampai function timeout. Nilai `0` butuh `patches/postgres+3.4.9.patch` (diterapkan otomatis oleh `postinstall`); saat menaikkan versi `postgres`, perbarui patch itu atau hapus bila upstream sudah memperbaikinya — `tests/integration/db-pipelining.test.ts` akan gagal bila patch hilang.
 - Uji migrasi + restore di staging dulu (§38).
 
 ## 3. Admin pertama & pemulihan

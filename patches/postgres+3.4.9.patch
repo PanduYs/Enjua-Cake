@@ -1,0 +1,58 @@
+diff --git a/node_modules/postgres/cf/src/connection.js b/node_modules/postgres/cf/src/connection.js
+index 8e79170..a092e70 100644
+--- a/node_modules/postgres/cf/src/connection.js
++++ b/node_modules/postgres/cf/src/connection.js
+@@ -175,8 +175,8 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+       return write(toBuffer(q))
+         && !q.describeFirst
+         && !q.cursorFn
+-        && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
++        && sent.length < max_pipeline
+     } catch (error) {
+       sent.length === 0 && write(Sync)
+       errored(error)
+diff --git a/node_modules/postgres/cjs/src/connection.js b/node_modules/postgres/cjs/src/connection.js
+index 07f6716..c1a43fa 100644
+--- a/node_modules/postgres/cjs/src/connection.js
++++ b/node_modules/postgres/cjs/src/connection.js
+@@ -173,8 +173,8 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+       return write(toBuffer(q))
+         && !q.describeFirst
+         && !q.cursorFn
+-        && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
++        && sent.length < max_pipeline
+     } catch (error) {
+       sent.length === 0 && write(Sync)
+       errored(error)
+diff --git a/node_modules/postgres/src/connection.js b/node_modules/postgres/src/connection.js
+index 1b1cccd..779b84b 100644
+--- a/node_modules/postgres/src/connection.js
++++ b/node_modules/postgres/src/connection.js
+@@ -173,8 +173,8 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+       return write(toBuffer(q))
+         && !q.describeFirst
+         && !q.cursorFn
+-        && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
++        && sent.length < max_pipeline
+     } catch (error) {
+       sent.length === 0 && write(Sync)
+       errored(error)
+diff --git a/node_modules/postgres/types/index.d.ts b/node_modules/postgres/types/index.d.ts
+index 13c3432..c99873f 100644
+--- a/node_modules/postgres/types/index.d.ts
++++ b/node_modules/postgres/types/index.d.ts
+@@ -122,6 +122,11 @@ interface BaseOptions<T extends Record<string, postgres.PostgresType>> {
+   backoff: boolean | ((attemptNum: number) => number);
+   max_lifetime: number | null;
+   keep_alive: number | null;
++  /**
++   * Max queries written to one connection before earlier replies arrive (0 = no pipelining)
++   * @default 100
++   */
++  max_pipeline: number;
+ }
+ 
+ 

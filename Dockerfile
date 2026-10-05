@@ -4,6 +4,8 @@
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+# postinstall applies patches/ (postgres.js: see src/server/db/client.ts).
+COPY patches ./patches
 RUN npm ci
 
 FROM deps AS build

@@ -18,6 +18,11 @@ export function createDatabase(url: string, options: { max?: number; silenceNoti
   const client = postgres(url, {
     max: options.max ?? 10,
     prepare: false,
+    // No pipelining: Supavisor/transaction-mode poolers answer only the first of several
+    // queries written back-to-back on one connection, so the rest hang until the function
+    // times out (seen on Preview as a never-ending admin login → dashboard render).
+    // `0` needs patches/postgres+3.4.9.patch, without which sql.begin() throws UNSAFE_TRANSACTION.
+    max_pipeline: 0,
     ...(options.silenceNotices ? { onnotice: () => {} } : {}),
   });
   return {

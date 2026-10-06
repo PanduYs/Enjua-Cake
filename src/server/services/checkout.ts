@@ -24,7 +24,7 @@ import { compareIsoDates, parseIsoDate, type IsoDate } from "@/server/domain/tim
 import type { PublicBucket } from "@/server/storage/types";
 
 import { capacityFactsForDates } from "./capacity";
-import { getSettings } from "./settings";
+import { getSettings, type Settings } from "./settings";
 
 export interface CheckoutDeps {
   db: Database;
@@ -46,28 +46,31 @@ interface CartProductRow extends ProductFacts {
 /** Current product data from the database — never from the browser (FD-32). */
 async function loadCartProducts(db: Database, productIds: string[]): Promise<Map<string, CartProductRow>> {
   if (productIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      id: products.id,
-      slug: products.slug,
-      name: products.name,
-      price: products.price,
-      salePrice: products.salePrice,
-      productType: products.productType,
-      minimumPreorderDays: products.minimumPreorderDays,
-      availability: products.availability,
-      isActive: products.isActive,
-      categoryActive: categories.isActive,
-      maxQuantityPerOrder: products.maxQuantityPerOrder,
-    })
-    .from(products)
-    .innerJoin(categories, eq(products.categoryId, categories.id))
-    .where(inArray(products.id, productIds));
-  const images = await db
-    .select({ productId: productImages.productId, key: productImages.storageKey, alt: productImages.altText })
-    .from(productImages)
-    .where(and(inArray(productImages.productId, productIds), eq(productImages.isMain, true)))
-    .orderBy(desc(productImages.isMain), asc(productImages.sortOrder));
+  const [rows, images] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        slug: products.slug,
+        name: products.name,
+        price: products.price,
+        salePrice: products.salePrice,
+        productType: products.productType,
+        minimumPreorderDays: products.minimumPreorderDays,
+        availability: products.availability,
+        isActive: products.isActive,
+        categoryActive: categories.isActive,
+        maxQuantityPerOrder: products.maxQuantityPerOrder,
+      })
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(inArray(products.id, productIds)),
+    // Looked up by the requested ids, so it does not wait for the product rows.
+    db
+      .select({ productId: productImages.productId, key: productImages.storageKey, alt: productImages.altText })
+      .from(productImages)
+      .where(and(inArray(productImages.productId, productIds), eq(productImages.isMain, true)))
+      .orderBy(desc(productImages.isMain), asc(productImages.sortOrder)),
+  ]);
   const mainImage = new Map(images.map((i) => [i.productId, i]));
   return new Map(
     rows.map((r) => [r.id, { ...r, imageKey: mainImage.get(r.id)?.key ?? null, imageAlt: mainImage.get(r.id)?.alt ?? null }]),
@@ -171,8 +174,11 @@ export interface PickupAvailability {
   dates: PickupDateStatus[];
 }
 
-async function availabilityFor(deps: CheckoutDeps, items: ReadonlyArray<{ productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }>): Promise<PickupAvailability> {
-  const settings = await getSettings(deps.db);
+async function availabilityFor(
+  deps: CheckoutDeps,
+  items: ReadonlyArray<{ productType: "READY_STOCK" | "PRE_ORDER"; minimumPreorderDays: number | null }>,
+  settings: Settings,
+): Promise<PickupAvailability> {
   const now = deps.clock.now();
   const window = pickupWindow({
     now,
@@ -192,8 +198,12 @@ async function availabilityFor(deps: CheckoutDeps, items: ReadonlyArray<{ produc
 /** Selectable pickup dates for the current cart, each with a reason when unavailable (PRD §7.1). */
 export async function getPickupAvailability(deps: CheckoutDeps, rawLines: unknown): Promise<PickupAvailability> {
   const parsed = cartLinesSchema.safeParse(rawLines);
-  const productMap = parsed.success ? await loadCartProducts(deps.db, parsed.data.map((l) => l.productId)) : new Map<string, CartProductRow>();
-  return availabilityFor(deps, [...productMap.values()]);
+  // Settings do not depend on the cart: read both at once.
+  const [productMap, settings] = await Promise.all([
+    parsed.success ? loadCartProducts(deps.db, parsed.data.map((l) => l.productId)) : new Map<string, CartProductRow>(),
+    getSettings(deps.db),
+  ]);
+  return availabilityFor(deps, [...productMap.values()], settings);
 }
 
 export interface CheckoutSummary {
@@ -305,11 +315,12 @@ export async function previewCheckout(deps: CheckoutDeps, rawInput: unknown): Pr
 export async function validateCheckout(
   deps: CheckoutDeps,
   rawInput: unknown,
-): Promise<{ ok: true; summary: CheckoutSummary; productFacts: OrderProductFacts } | Extract<CheckoutPreviewResult, { ok: false }>> {
-  const prepared = await prepareCheckout(deps, rawInput);
+): Promise<{ ok: true; summary: CheckoutSummary; productFacts: OrderProductFacts; settings: Settings } | Extract<CheckoutPreviewResult, { ok: false }>> {
+  // Settings do not depend on the cart: read them while the cart is validated.
+  const [prepared, settings] = await Promise.all([prepareCheckout(deps, rawInput), getSettings(deps.db)]);
   if (!prepared.ok) return prepared;
   const { summary } = prepared;
-  const availability = await availabilityFor(deps, [...prepared.productFacts.values()]);
+  const availability = await availabilityFor(deps, [...prepared.productFacts.values()], settings);
   // Dates outside today..horizon are not in the list: before today is a past date, otherwise beyond the horizon.
   const status = availability.dates.find((d) => d.date === summary.pickupDate) ?? {
     date: summary.pickupDate,
@@ -319,6 +330,6 @@ export async function validateCheckout(
   if (!status.available) {
     return { ok: false, fieldErrors: { pickupDate: "Tanggal ini tidak tersedia. Silakan pilih tanggal lain." }, pickupReason: status.reason };
   }
-  return prepared;
+  return { ...prepared, settings };
 }
 

@@ -146,9 +146,8 @@ export async function placeOrder(deps: PlaceOrderDeps, input: unknown, options: 
       pickupReason: preview.pickupReason,
     };
   }
-  const { summary, productFacts } = preview;
-
-  const settings = await getSettings(deps.db);
+  // The settings the checkout was validated with (one snapshot for the whole request).
+  const { summary, productFacts, settings } = preview;
   const lineFacts = summary.lines.map((l) => productFacts.get(l.productId)!);
 
   const window = pickupWindow({

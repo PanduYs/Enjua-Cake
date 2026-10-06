@@ -15,6 +15,8 @@ import { expireDueReservations, expireIfDue, regenerateTrackingToken, transition
 import { PLACE_ORDER_RATE_LIMIT, placeOrder, type PlaceOrderDeps, type PlacedOrder } from "@/server/services/place-order";
 import { getTrackingView, TRACKING_RATE_LIMITS, verifyTrackingAccess } from "@/server/services/tracking";
 
+import { openProxiedDatabase } from "../support/wire-proxy";
+
 let handle: DatabaseHandle;
 const ids: Record<string, string> = {};
 const START = new Date("2026-10-02T03:00:00Z"); // 10:00 WIB
@@ -262,6 +264,22 @@ describe("placeOrder (IMPLEMENTATION-PLAN §11.1)", () => {
       ok: false,
       code: "RATE_LIMITED",
     });
+  });
+});
+
+describe("placeOrder round trips", () => {
+  it("reads the settings once and uses that snapshot for validation and the order", async () => {
+    await handle.db.insert(settings).values({ key: "qris_reservation_minutes", value: 45 });
+    const { handle: proxied, proxy } = await openProxiedDatabase(inject("databaseUrl"), 2);
+    try {
+      const r = await placeOrder({ ...deps(), db: proxied.db }, input(qrisPreorder()), { idempotencyKey: randomUUID(), clientIp: `ip-${randomUUID()}` });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.order.reservationExpiresAt).toBe(new Date(clock.now().getTime() + 45 * 60_000).toISOString());
+      expect(proxy.takeStatements().filter((s) => /from "settings"/.test(s))).toHaveLength(1);
+    } finally {
+      await proxied.close();
+      await proxy.close();
+    }
   });
 });
 

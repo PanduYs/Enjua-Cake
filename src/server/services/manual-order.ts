@@ -59,11 +59,11 @@ export async function placeManualOrder(
   if (existing) return replay(existing) as ManualOrderResult;
 
   // Products, quantities, Sold Out/inactive, Cash for Pre-Order, DP rules: never overridable.
-  const prepared = await prepareCheckout({ ...deps, clock: fixedClock }, input);
+  // Settings do not depend on the cart: read them while the cart is validated.
+  const [prepared, settings] = await Promise.all([prepareCheckout({ ...deps, clock: fixedClock }, input), getSettings(deps.db)]);
   if (!prepared.ok) return { ok: false, code: "CHECKOUT_INVALID", fieldErrors: prepared.fieldErrors, cartIssues: prepared.cartIssues };
   const { summary, productFacts } = prepared;
 
-  const settings = await getSettings(deps.db);
   const minDays = maxPreorderDays([...productFacts.values()]);
   const window = pickupWindow({ now, cutoff: settings.pickup_cutoff, bookingHorizonDays: settings.booking_horizon_days, maxPreorderDays: minDays });
   const granted = new Map(overrides.data.filter((o) => o.reason.length > 0).map((o) => [o.type, o.reason]));

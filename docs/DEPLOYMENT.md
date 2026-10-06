@@ -16,7 +16,7 @@ dipertahankan sebagai referensi; repositori masih mendukung kedua opsi tanpa men
 
 | | Opsi A — managed (rekomendasi plan) | Opsi B — self-managed |
 |---|---|---|
-| Aplikasi | Vercel Pro (region Singapura) | 1 VPS + Docker (`Dockerfile` target `runner`, output standalone) |
+| Aplikasi | Vercel (Hobby saat ini; function region `sin1`) | 1 VPS + Docker (`Dockerfile` target `runner`, output standalone) |
 | Database | Supabase PostgreSQL (backup terkelola) | PostgreSQL 16 (container/VM) + backup sendiri |
 | Storage | Supabase Storage (API S3) | S3-compatible (mis. Cloudflare R2) atau disk + backup |
 | Sweeper | Vercel Cron (`vercel.json`, 1×/hari — batas Hobby; lihat §4) | cron host memanggil endpoint (lihat bawah) |
@@ -42,7 +42,8 @@ Wajib: `APP_URL` (https), `DATABASE_URL`, `AUTH_SECRET`, `CRON_SECRET`,
 `PAYMENT_PROVIDER`, `PAYMENT_ENV`, `MIDTRANS_SERVER_KEY`, `STORAGE_DRIVER` dan, untuk
 `s3`, `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY_ID`,
 `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_PUBLIC_BUCKET`, `STORAGE_PRIVATE_BUCKET`.
-Opsional: `DATABASE_POOL_MAX`, `LOG_LEVEL`. Khusus staging dengan MockProvider:
+Opsional: `DATABASE_POOL_MAX` (disarankan `5` untuk Vercel + Supavisor: terukur dashboard admin
+−32%, detail order −22% vs `2`; tiap instance memakai ≤ 5 koneksi klien pooler), `LOG_LEVEL`. Khusus staging dengan MockProvider:
 `ALLOW_MOCK_PAYMENTS=true` + `MOCK_PAYMENT_WEBHOOK_SECRET` (dilarang di production).
 
 Nilai bisnis (cutoff, kapasitas, rekening, WhatsApp, alamat, dll.) **bukan** env —
@@ -153,6 +154,11 @@ pakai penjadwal eksternal yang memanggil endpoint tiap 5 menit dengan `CRON_SECR
 - Verifikasi: signature SHA-512 → status API Midtrans (sumber kebenaran) → idempotensi
   per event. Gagal verifikasi = 401; provider down = 503 (Midtrans akan retry).
 - QRIS hanya dikonfirmasi lewat jalur ini (FD-111).
+- **Preview/staging:** Vercel Deployment Protection (Vercel Authentication) menolak request
+  tanpa login Vercel, termasuk notifikasi Midtrans. Untuk uji webhook sandbox di Preview,
+  aktifkan *Protection Bypass for Automation* lalu pakai URL notifikasi dengan parameter
+  bypass, atau uji di domain staging tanpa proteksi. Tanpa itu QRIS sandbox tidak pernah
+  terkonfirmasi di Preview.
 
 ### Validasi sandbox (PRD §60) — **BLOCKED: menunggu server key sandbox**
 

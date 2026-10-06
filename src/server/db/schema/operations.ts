@@ -20,7 +20,7 @@ export const pickupDates = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("pickup_dates_capacity_non_negative", sql`${t.capacityOverride} IS NULL OR ${t.capacityOverride} >= 0`)],
-);
+).enableRLS();
 
 /** Website Settings key → JSON value, validated per key by Zod (IMPLEMENTATION-PLAN §27). */
 export const settings = pgTable("settings", {
@@ -28,7 +28,7 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
   updatedByAdminId: text("updated_by_admin_id").references(() => admins.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 /** Append-only audit trail (IMPLEMENTATION-PLAN §39). */
 export const auditLogs = pgTable(
@@ -50,11 +50,11 @@ export const auditLogs = pgTable(
     index("audit_logs_entity_idx").on(t.entityType, t.entityId),
     index("audit_logs_created_at_idx").on(t.createdAt),
   ],
-);
+).enableRLS();
 
 /** Fixed-window rate limit counters, database-backed so they work on serverless (IMPLEMENTATION-PLAN §30). */
 export const rateLimits = pgTable("rate_limits", {
   key: text("key").primaryKey(),
   windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
   count: integer("count").notNull(),
-});
+}).enableRLS();

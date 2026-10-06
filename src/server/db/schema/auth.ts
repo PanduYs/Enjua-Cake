@@ -15,7 +15,7 @@ export const admins = pgTable("admins", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const adminSessions = pgTable(
   "admin_sessions",
@@ -32,7 +32,7 @@ export const adminSessions = pgTable(
       .references(() => admins.id, { onDelete: "cascade" }),
   },
   (t) => [index("admin_sessions_user_id_idx").on(t.userId)],
-);
+).enableRLS();
 
 export const adminAccounts = pgTable(
   "admin_accounts",
@@ -55,7 +55,7 @@ export const adminAccounts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("admin_accounts_user_id_idx").on(t.userId)],
-);
+).enableRLS();
 
 export const authVerifications = pgTable("auth_verifications", {
   id: text("id").primaryKey(),
@@ -64,4 +64,4 @@ export const authVerifications = pgTable("auth_verifications", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();

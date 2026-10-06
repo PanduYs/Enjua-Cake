@@ -42,7 +42,7 @@ export const paymentTransactions = pgTable(
     unique("payment_transactions_provider_reference_unique").on(t.provider, t.providerReference),
     check("payment_transactions_amount_positive", sql`${t.amount} > 0`),
   ],
-);
+).enableRLS();
 
 export const paymentProofs = pgTable(
   "payment_proofs",
@@ -71,7 +71,7 @@ export const paymentProofs = pgTable(
     check("payment_proofs_mime_allowed", sql`${t.mimeType} IN ('image/jpeg', 'image/png', 'application/pdf')`),
     check("payment_proofs_size_limit", sql`${t.sizeBytes} > 0 AND ${t.sizeBytes} <= 5242880`),
   ],
-);
+).enableRLS();
 
 export const paymentExceptions = pgTable(
   "payment_exceptions",
@@ -93,7 +93,7 @@ export const paymentExceptions = pgTable(
     foreignKey({ name: "payment_exceptions_transaction_fk", columns: [t.paymentTransactionId], foreignColumns: [paymentTransactions.id] }).onDelete("restrict"),
     index("payment_exceptions_status_idx").on(t.status),
   ],
-);
+).enableRLS();
 
 /**
  * Manual refund records (FD-62, FD-63). `status` values are finalized in Phase 5;
@@ -117,7 +117,7 @@ export const refunds = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("refunds_order_id_idx").on(t.orderId), check("refunds_amount_positive", sql`${t.amount} > 0`)],
-);
+).enableRLS();
 
 /** Webhook idempotency log (IMPLEMENTATION-PLAN §16, §32). */
 export const paymentWebhookEvents = pgTable(
@@ -133,4 +133,4 @@ export const paymentWebhookEvents = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true }),
   },
   (t) => [unique("payment_webhook_events_provider_event_unique").on(t.provider, t.providerEventKey)],
-);
+).enableRLS();

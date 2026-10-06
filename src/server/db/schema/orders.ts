@@ -61,7 +61,7 @@ export const orders = pgTable(
     check("orders_dp_amount_valid", sql`${t.dpAmount} IS NULL OR ${t.dpAmount} >= 0`),
     check("orders_cash_full_only", sql`${t.paymentMethod} <> 'CASH' OR ${t.paymentOption} = 'FULL'`),
   ],
-);
+).enableRLS();
 
 export const orderItems = pgTable(
   "order_items",
@@ -87,7 +87,7 @@ export const orderItems = pgTable(
     check("order_items_quantity_positive", sql`${t.quantity} > 0`),
     check("order_items_amounts_non_negative", sql`${t.effectiveUnitPrice} >= 0 AND ${t.lineSubtotal} >= 0`),
   ],
-);
+).enableRLS();
 
 /** Manual Order overrides — every field required by FD-119. */
 export const orderOverrides = pgTable(
@@ -110,4 +110,4 @@ export const orderOverrides = pgTable(
     index("order_overrides_order_id_idx").on(t.orderId),
     check("order_overrides_reason_not_blank", sql`length(trim(${t.reason})) > 0`),
   ],
-);
+).enableRLS();

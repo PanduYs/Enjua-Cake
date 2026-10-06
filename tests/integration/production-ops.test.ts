@@ -49,6 +49,14 @@ describe("go-live checklist (GL-01…GL-12)", () => {
 });
 
 describe("payment reconciliation report (plan §38)", () => {
+  it("an empty window (e.g. the wrong DATABASE_URL) is reported as such and is not a success unless allowed", async () => {
+    const provider = new MockPaymentProvider({ webhookSecret: "reconcile-webhook-secret", now: () => clock.now() });
+    const rows = await reconcilePayments(handle.db, provider);
+    expect(rows).toEqual([]);
+    expect(summarizeReconcile(rows)).toEqual({ checked: 0, mismatches: 0, unchecked: 0, empty: true, exitCode: 1 });
+    expect(summarizeReconcile(rows, { allowEmpty: true }).exitCode).toBe(0);
+  });
+
   it("finds QRIS payments the provider settled but the database missed (no webhook), changing nothing", async () => {
     const [cat] = await handle.db.insert(categories).values({ name: "C", slug: "c" }).returning({ id: categories.id });
     const [p] = await handle.db.insert(products).values({ categoryId: cat!.id, name: "K", slug: "k", price: 50_000, productType: "READY_STOCK" }).returning({ id: products.id });
@@ -63,14 +71,14 @@ describe("payment reconciliation report (plan §38)", () => {
     if (!q.ok) throw new Error(q.error);
     const before = await reconcilePayments(handle.db, provider);
     expect(before).toEqual([expect.objectContaining({ dbStatus: "WAITING_PAYMENT", providerStatus: "PENDING", mismatch: false })]);
-    expect(summarizeReconcile(before)).toEqual({ checked: 1, mismatches: 0, unchecked: 0, exitCode: 0 });
+    expect(summarizeReconcile(before)).toEqual({ checked: 1, mismatches: 0, unchecked: 0, empty: false, exitCode: 0 });
 
     // Customer pays, but the webhook never arrives.
     const [{ ref }] = (await handle.db.execute<{ ref: string }>(sql`select provider_reference as ref from payment_transactions`)) as unknown as [{ ref: string }];
     provider.simulatePayment(ref, "PAID");
     const after = await reconcilePayments(handle.db, provider);
     expect(after).toEqual([expect.objectContaining({ orderNumber: order.order.orderNumber, providerStatus: "PAID", mismatch: true })]);
-    expect(summarizeReconcile(after)).toEqual({ checked: 1, mismatches: 1, unchecked: 0, exitCode: 1 });
+    expect(summarizeReconcile(after)).toEqual({ checked: 1, mismatches: 1, unchecked: 0, empty: false, exitCode: 1 });
     expect((await handle.db.execute(sql`select status from payment_transactions`))[0]).toMatchObject({ status: "WAITING_PAYMENT" });
   });
 
@@ -103,10 +111,10 @@ describe("payment reconciliation report (plan §38)", () => {
       ["PROVIDER_UNAVAILABLE", false],
       ["PROVIDER_UNAVAILABLE", false],
     ]);
-    expect(summarizeReconcile(unavailable)).toEqual({ checked: 0, mismatches: 0, unchecked: 2, exitCode: 1 });
+    expect(summarizeReconcile(unavailable)).toEqual({ checked: 0, mismatches: 0, unchecked: 2, empty: false, exitCode: 1 });
 
     const broken = await reconcilePayments(handle.db, failing(new Error("unexpected")));
-    expect(summarizeReconcile(broken)).toEqual({ checked: 0, mismatches: 0, unchecked: 2, exitCode: 1 });
+    expect(summarizeReconcile(broken)).toEqual({ checked: 0, mismatches: 0, unchecked: 2, empty: false, exitCode: 1 });
 
     // One readable, one not: still incomplete.
     let calls = 0;
@@ -117,7 +125,7 @@ describe("payment reconciliation report (plan §38)", () => {
         throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Midtrans status 429");
       },
     };
-    expect(summarizeReconcile(await reconcilePayments(handle.db, flaky))).toEqual({ checked: 1, mismatches: 0, unchecked: 1, exitCode: 1 });
+    expect(summarizeReconcile(await reconcilePayments(handle.db, flaky))).toEqual({ checked: 1, mismatches: 0, unchecked: 1, empty: false, exitCode: 1 });
     expect(await handle.db.execute(sql`select status from payment_transactions`)).toEqual([{ status: "WAITING_PAYMENT" }, { status: "WAITING_PAYMENT" }]);
   });
 });

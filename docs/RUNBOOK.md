@@ -37,7 +37,7 @@ Catat setiap rotasi (tanggal, oleh siapa) di luar repositori.
 1. Cek log `payment_webhook` status 401 (signature/kunci salah — periksa
    `MIDTRANS_SERVER_KEY` sesuai `PAYMENT_ENV`) atau 503 (status API tidak terjangkau).
 2. Perbaiki penyebab, lalu kirim ulang notifikasi dari dashboard Midtrans.
-3. `npm run payments:reconcile` hingga exit code 0 (0 mismatch, 0 unchecked). Pembayaran yang tiba setelah pesanan
+3. `npm run payments:reconcile` hingga exit code 0 (≥1 dicek, 0 mismatch, 0 unchecked; window kosong → `--allow-empty`). Pembayaran yang tiba setelah pesanan
    kedaluwarsa otomatis menjadi Payment Exception (FD-107/118) — tangani di /admin/pembayaran.
 
 ## Storage tidak tersedia

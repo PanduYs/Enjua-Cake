@@ -95,6 +95,11 @@ guard di atas tidak berlaku. Konfigurasi E2E (`playwright.config.ts`: mock + `lo
   (advisory lock mencegah dua migrasi berjalan bersamaan).
 - Aplikasi memakai `prepare: false`, aman untuk pooler mode transaksi (Supabase/PgBouncer).
 - Aplikasi juga mematikan pipelining postgres.js (`max_pipeline: 0`, `src/server/db/client.ts`): Supavisor mode transaksi hanya menjawab query pertama dari beberapa query yang dikirim berurutan di satu koneksi, sisanya menggantung sampai function timeout. Nilai `0` butuh `patches/postgres+3.4.9.patch` (diterapkan otomatis oleh `postinstall`); saat menaikkan versi `postgres`, perbarui patch itu atau hapus bila upstream sudah memperbaikinya — `tests/integration/db-pipelining.test.ts` akan gagal bila patch hilang.
+- RLS aktif di semua tabel `public` tanpa policy (`drizzle/0001_enable_rls.sql`): role Data API
+  (`anon`, `authenticated`) tidak mendapat baris apa pun meski kelak ada grant. Aplikasi terhubung
+  sebagai pemilik tabel (`postgres`, juga BYPASSRLS di Supabase) sehingga tidak terpengaruh; jangan
+  jalankan aplikasi atau migrasi dengan role lain. Tabel baru wajib `.enableRLS()` di schema
+  (dicek oleh `tests/integration/row-level-security.test.ts`).
 - Uji migrasi + restore di staging dulu (§38).
 
 ## 3. Admin pertama & pemulihan
@@ -181,8 +186,11 @@ Client key tidak dipakai (Core API, QR dirender server). `ALLOW_MOCK_PAYMENTS` d
 6. Bukti lulus: baris baru di `payment_webhook_events` (signature valid, hasil
    `PAID_ORDER_CONFIRMED`), transaksi `PAID`, order `CONFIRMED`. Ulangi untuk gagal/expired
    (biarkan QR habis) dan webhook ganda (kirim ulang notifikasi dari dashboard → `DUPLICATE_EVENT`).
-7. `npm run payments:reconcile` harus selesai dengan exit code 0: 0 mismatch dan 0 unchecked
-   (UNCHECKED = status provider tidak terbaca, mis. server key/`PAYMENT_ENV` salah).
+7. `npm run payments:reconcile` harus selesai dengan exit code 0: minimal 1 transaksi dicek,
+   0 mismatch dan 0 unchecked (UNCHECKED = status provider tidak terbaca, mis. server key/
+   `PAYMENT_ENV` salah). Baris `database:` menunjukkan host/nama DB yang dibaca (tanpa kredensial).
+   Window kosong = exit 1 (sering berarti `DATABASE_URL` salah); `--allow-empty` hanya bila memang
+   diharapkan kosong. Exit 2 = run gagal; kode error PostgreSQL (mis. `28P01`) ikut dicetak.
 
 MockProvider **bukan** pengganti langkah di atas.
 

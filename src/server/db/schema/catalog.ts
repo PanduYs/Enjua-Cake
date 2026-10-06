@@ -13,7 +13,7 @@ export const categories = pgTable("categories", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const products = pgTable(
   "products",
@@ -48,7 +48,7 @@ export const products = pgTable(
     ),
     check("products_max_qty_positive", sql`${t.maxQuantityPerOrder} IS NULL OR ${t.maxQuantityPerOrder} > 0`),
   ],
-);
+).enableRLS();
 
 export const productImages = pgTable(
   "product_images",
@@ -68,4 +68,4 @@ export const productImages = pgTable(
     // Exactly one main image per product is enforced as "at most one" here; "at least one" is a service rule.
     uniqueIndex("product_images_one_main_per_product").on(t.productId).where(sql`${t.isMain} = true`),
   ],
-);
+).enableRLS();

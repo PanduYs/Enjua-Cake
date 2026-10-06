@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { findDestructiveStatements } from "@/server/ops/migration-guard";
+import { describeDatabaseTarget, describeFailure, secretsFromEnv, summarizeReconcile } from "@/server/ops/reconcile";
 import { preflight } from "@/server/ops/preflight";
 
 describe("migration guard (plan §36.1 forward-only)", () => {
@@ -92,3 +93,46 @@ describe("Vercel Functions run next to the database", () => {
     expect(config.regions).toEqual(["sin1"]);
   });
 });
+
+describe("payments:reconcile output (safe diagnostics, empty window)", () => {
+  // Test-only fake values.
+  const env = {
+    DATABASE_URL: "postgresql://postgres.abcdefghijkl:p%40ss-W0rd-x@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres",
+    MIDTRANS_SERVER_KEY: "SB-Mid-server-TEST-ONLY-fake",
+    AUTH_SECRET: "auth-secret-test-only-0123456789abcdef",
+  } as unknown as NodeJS.ProcessEnv;
+
+  it("names the database without credentials", () => {
+    expect(describeDatabaseTarget(env.DATABASE_URL!)).toBe("aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres");
+    expect(describeDatabaseTarget("not a url")).toBe("(unparseable DATABASE_URL)");
+  });
+
+  it("shows the PostgreSQL code hidden in the Drizzle cause, and never a secret", () => {
+    const pg = Object.assign(new Error('password authentication failed for user "postgres"'), { name: "PostgresError", code: "28P01" });
+    const drizzle = Object.assign(new Error('Failed query: select "payment_transactions"."id" from "payment_transactions"\nparams: QRIS,midtrans'), { name: "DrizzleQueryError", cause: pg });
+    expect(describeFailure(drizzle, secretsFromEnv(env))).toEqual([
+      'error: DrizzleQueryError: Failed query: select "payment_transactions"."id" from "payment_transactions"',
+      'cause: PostgresError [28P01]: password authentication failed for user "postgres"',
+    ]);
+
+    const leaky = Object.assign(new Error(`connect failed for ${env.DATABASE_URL} using ${env.MIDTRANS_SERVER_KEY} and p@ss-W0rd-x`), {
+      cause: new Error(`Basic ${Buffer.from(`${env.MIDTRANS_SERVER_KEY}:`).toString("base64")} rejected; auth ${env.AUTH_SECRET}`),
+    });
+    const printed = describeFailure(leaky, secretsFromEnv(env)).join("\n");
+    for (const secret of ["p%40ss-W0rd-x", "p@ss-W0rd-x", "SB-Mid-server-TEST-ONLY-fake", env.AUTH_SECRET!, Buffer.from(`${env.MIDTRANS_SERVER_KEY}:`).toString("base64")]) {
+      expect(printed).not.toContain(secret);
+    }
+    expect(printed).toContain("[redacted]");
+    // Credentials in any URL are removed even when the value is not a configured secret.
+    expect(describeFailure(new Error("bad url postgres://someone:hunter22@db.example:5432/x"), [])).toEqual(["error: Error: bad url postgres://someone:[redacted]@db.example:5432/x"]);
+  });
+
+  it("an empty window is not a success unless explicitly allowed", () => {
+    expect(summarizeReconcile([])).toEqual({ checked: 0, mismatches: 0, unchecked: 0, empty: true, exitCode: 1 });
+    expect(summarizeReconcile([], { allowEmpty: true })).toEqual({ checked: 0, mismatches: 0, unchecked: 0, empty: true, exitCode: 0 });
+    const ok = { transactionId: "t", orderNumber: "ENC-1", amount: 10_000, dbStatus: "EXPIRED", providerStatus: "EXPIRED", mismatch: false };
+    expect(summarizeReconcile([ok])).toEqual({ checked: 1, mismatches: 0, unchecked: 0, empty: false, exitCode: 0 });
+    expect(summarizeReconcile([{ ...ok, providerStatus: "PAID", mismatch: true }], { allowEmpty: true }).exitCode).toBe(1);
+  });
+});
+

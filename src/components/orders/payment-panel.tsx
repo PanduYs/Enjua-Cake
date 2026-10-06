@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PAYMENT_PURPOSE_LABEL } from "@/lib/copy/payments";
@@ -16,9 +16,48 @@ type ActionResult = { ok: boolean; message?: string };
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = ".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf";
 
-/** Re-renders the page when the server-side payment status changes (QRIS confirmed by webhook). */
-function usePaymentPolling(enabled: boolean, current: string) {
+type PageRefresh = { refresh: () => void; isRefreshing: () => boolean };
+const PageRefreshContext = createContext<PageRefresh | null>(null);
+
+/**
+ * One page refresh at a time. A tracking-page refresh can take longer than the 5 s status poll
+ * (7.5–8.1 s measured on staging), and every new router.refresh() cancels the one in flight, so
+ * the page never showed the new status. Refreshes requested meanwhile are coalesced into one
+ * follow-up refresh once the current one has rendered.
+ */
+function useSingleFlightRefresh(): PageRefresh {
   const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+  const inFlight = useRef(false);
+  const queued = useRef(false);
+  const refresh = useCallback(() => {
+    if (inFlight.current) {
+      queued.current = true;
+      return;
+    }
+    inFlight.current = true;
+    startRefresh(() => router.refresh());
+  }, [router]);
+  useEffect(() => {
+    if (refreshing) return;
+    inFlight.current = false;
+    if (queued.current) {
+      queued.current = false;
+      refresh();
+    }
+  }, [refreshing, refresh]);
+  return useMemo(() => ({ refresh, isRefreshing: () => inFlight.current }), [refresh]);
+}
+
+/** The panel's single-flight refresh (falls back to a plain refresh outside the panel). */
+function usePageRefresh(): () => void {
+  const context = useContext(PageRefreshContext);
+  const router = useRouter();
+  return context?.refresh ?? router.refresh;
+}
+
+/** Re-renders the page when the server-side payment status changes (QRIS confirmed by webhook). */
+function usePaymentPolling(enabled: boolean, current: string, page: PageRefresh) {
   const last = useRef(current);
   useEffect(() => {
     last.current = current;
@@ -26,22 +65,24 @@ function usePaymentPolling(enabled: boolean, current: string) {
   useEffect(() => {
     if (!enabled) return;
     const timer = window.setInterval(async () => {
+      // A refresh is already bringing the latest status; compare again once it has rendered.
+      if (page.isRefreshing()) return;
       try {
         const res = await fetch("/api/payments/status", { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as { orderStatus: string; paymentStatus: string };
-        if (`${data.orderStatus}/${data.paymentStatus}` !== last.current) router.refresh();
+        if (`${data.orderStatus}/${data.paymentStatus}` !== last.current) page.refresh();
       } catch {
         // Network hiccup: try again on the next tick.
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [enabled, router]);
+  }, [enabled, page]);
 }
 
 /** "QRIS berlaku selama mm:ss"; refreshes the page when the QR runs out (server decides what is next). */
 function QrCountdown({ until }: { until: string }) {
-  const router = useRouter();
+  const refreshPage = usePageRefresh();
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- clock starts after mount (no SSR/client mismatch)
@@ -51,8 +92,8 @@ function QrCountdown({ until }: { until: string }) {
   }, []);
   const left = now === null ? null : Math.max(0, Date.parse(until) - now);
   useEffect(() => {
-    if (left === 0) router.refresh();
-  }, [left, router]);
+    if (left === 0) refreshPage();
+  }, [left, refreshPage]);
   if (left === null) return null;
   if (left === 0) return <p className="font-semibold">QRIS ini sudah tidak berlaku.</p>;
   const minutes = Math.floor(left / 60_000);
@@ -78,7 +119,7 @@ function QrisBlock({
   requestQris: () => Promise<ActionResult>;
   simulate: ((outcome: "PAID" | "FAILED") => Promise<ActionResult>) | null;
 }) {
-  const router = useRouter();
+  const refreshPage = usePageRefresh();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const qris = state.activeQris;
@@ -88,7 +129,7 @@ function QrisBlock({
       setMessage(null);
       const result = await action();
       if (!result.ok && result.message) setMessage(result.message);
-      router.refresh();
+      refreshPage();
     });
 
   return (
@@ -155,7 +196,7 @@ function QrisBlock({
 }
 
 function TransferBlock({ state }: { state: CustomerPaymentState }) {
-  const router = useRouter();
+  const refreshPage = usePageRefresh();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
   const transfer = state.pendingTransfer;
@@ -174,7 +215,7 @@ function TransferBlock({ state }: { state: CustomerPaymentState }) {
       const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; message?: string };
       if (data.ok) {
         setMessage({ error: false, text: "Bukti pembayaran terkirim. Admin akan memverifikasi." });
-        router.refresh();
+        refreshPage();
       } else setMessage({ error: true, text: data.message ?? "Gagal mengunggah. Silakan coba lagi." });
     } catch {
       setMessage({ error: true, text: "Tidak dapat terhubung. Periksa koneksi lalu coba lagi." });
@@ -249,78 +290,80 @@ export function PaymentPanel({
   startTransferRemaining: () => Promise<ActionResult>;
   simulate: ((outcome: "PAID" | "FAILED") => Promise<ActionResult>) | null;
 }) {
-  const router = useRouter();
+  const page = useSingleFlightRefresh();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [remainingMethod, setRemainingMethod] = useState<"QRIS" | "BANK_TRANSFER" | null>(
     state.activeQris ? "QRIS" : state.pendingTransfer ? "BANK_TRANSFER" : null,
   );
-  usePaymentPolling(state.stage === "PAY_INITIAL" || state.stage === "PAY_REMAINING" || state.stage === "VERIFYING", statusKey);
+  usePaymentPolling(state.stage === "PAY_INITIAL" || state.stage === "PAY_REMAINING" || state.stage === "VERIFYING", statusKey, page);
 
   if (state.stage === "CLOSED" || state.stage === "PAID") return null;
 
   return (
-    <section aria-labelledby="bayar" className="flex flex-col gap-3 rounded-card border-2 border-accent bg-surface p-5 text-sm sm:p-6">
-      <h2 id="bayar" className="text-xl">
-        {state.stage === "PAY_REMAINING"
-          ? "Pelunasan"
-          : state.stage === "VERIFYING"
-            ? "Verifikasi Pembayaran"
-            : state.stage === "CASH_AT_PICKUP"
-              ? "Pembayaran Saat Pengambilan"
-              : "Lakukan Pembayaran"}
-      </h2>
+    <PageRefreshContext.Provider value={page}>
+      <section aria-labelledby="bayar" className="flex flex-col gap-3 rounded-card border-2 border-accent bg-surface p-5 text-sm sm:p-6">
+        <h2 id="bayar" className="text-xl">
+          {state.stage === "PAY_REMAINING"
+            ? "Pelunasan"
+            : state.stage === "VERIFYING"
+              ? "Verifikasi Pembayaran"
+              : state.stage === "CASH_AT_PICKUP"
+                ? "Pembayaran Saat Pengambilan"
+                : "Lakukan Pembayaran"}
+        </h2>
 
-      {state.stage === "CASH_AT_PICKUP" ? (
-        <p>
-          Bayar penuh <strong>{formatRupiah(state.amountDue)}</strong> secara tunai saat mengambil pesanan. Tidak perlu membayar online.
-        </p>
-      ) : null}
-
-      {state.stage === "VERIFYING" ? (
-        <p role="status">Bukti pembayaran sudah diterima dan sedang diperiksa oleh admin. Pembayaran dianggap berhasil setelah disetujui.</p>
-      ) : null}
-
-      {state.stage === "PAY_INITIAL" && state.method === "QRIS" ? <QrisBlock state={state} qrDataUrl={qrDataUrl} requestQris={requestQris} simulate={simulate} /> : null}
-      {state.stage === "PAY_INITIAL" && state.method === "BANK_TRANSFER" ? <TransferBlock state={state} /> : null}
-
-      {state.stage === "PAY_REMAINING" ? (
-        <>
+        {state.stage === "CASH_AT_PICKUP" ? (
           <p>
-            Sisa pembayaran <strong>{formatRupiah(state.amountDue)}</strong> wajib dilunasi sebelum pesanan dapat diselesaikan. Pilih metode pelunasan:
+            Bayar penuh <strong>{formatRupiah(state.amountDue)}</strong> secara tunai saat mengambil pesanan. Tidak perlu membayar online.
           </p>
-          <div role="group" aria-label="Metode pelunasan" className="flex flex-wrap gap-2">
-            <Button type="button" variant={remainingMethod === "QRIS" ? "primary" : "secondary"} aria-pressed={remainingMethod === "QRIS"} onClick={() => setRemainingMethod("QRIS")}>
-              QRIS
-            </Button>
-            <Button
-              type="button"
-              variant={remainingMethod === "BANK_TRANSFER" ? "primary" : "secondary"}
-              aria-pressed={remainingMethod === "BANK_TRANSFER"}
-              disabled={pending}
-              onClick={() => {
-                setRemainingMethod("BANK_TRANSFER");
-                if (!state.pendingTransfer)
-                  start(async () => {
-                    setMessage(null);
-                    const result = await startTransferRemaining();
-                    if (!result.ok && result.message) setMessage(result.message);
-                    router.refresh();
-                  });
-              }}
-            >
-              Transfer Bank
-            </Button>
-          </div>
-          {message ? (
-            <p role="alert" className="rounded-control border border-danger bg-background px-4 py-3 font-medium text-danger">
-              {message}
+        ) : null}
+
+        {state.stage === "VERIFYING" ? (
+          <p role="status">Bukti pembayaran sudah diterima dan sedang diperiksa oleh admin. Pembayaran dianggap berhasil setelah disetujui.</p>
+        ) : null}
+
+        {state.stage === "PAY_INITIAL" && state.method === "QRIS" ? <QrisBlock state={state} qrDataUrl={qrDataUrl} requestQris={requestQris} simulate={simulate} /> : null}
+        {state.stage === "PAY_INITIAL" && state.method === "BANK_TRANSFER" ? <TransferBlock state={state} /> : null}
+
+        {state.stage === "PAY_REMAINING" ? (
+          <>
+            <p>
+              Sisa pembayaran <strong>{formatRupiah(state.amountDue)}</strong> wajib dilunasi sebelum pesanan dapat diselesaikan. Pilih metode pelunasan:
             </p>
-          ) : null}
-          {remainingMethod === "QRIS" ? <QrisBlock state={state} qrDataUrl={qrDataUrl} requestQris={requestQris} simulate={simulate} /> : null}
-          {remainingMethod === "BANK_TRANSFER" ? <TransferBlock state={state} /> : null}
-        </>
-      ) : null}
-    </section>
+            <div role="group" aria-label="Metode pelunasan" className="flex flex-wrap gap-2">
+              <Button type="button" variant={remainingMethod === "QRIS" ? "primary" : "secondary"} aria-pressed={remainingMethod === "QRIS"} onClick={() => setRemainingMethod("QRIS")}>
+                QRIS
+              </Button>
+              <Button
+                type="button"
+                variant={remainingMethod === "BANK_TRANSFER" ? "primary" : "secondary"}
+                aria-pressed={remainingMethod === "BANK_TRANSFER"}
+                disabled={pending}
+                onClick={() => {
+                  setRemainingMethod("BANK_TRANSFER");
+                  if (!state.pendingTransfer)
+                    start(async () => {
+                      setMessage(null);
+                      const result = await startTransferRemaining();
+                      if (!result.ok && result.message) setMessage(result.message);
+                      page.refresh();
+                    });
+                }}
+              >
+                Transfer Bank
+              </Button>
+            </div>
+            {message ? (
+              <p role="alert" className="rounded-control border border-danger bg-background px-4 py-3 font-medium text-danger">
+                {message}
+              </p>
+            ) : null}
+            {remainingMethod === "QRIS" ? <QrisBlock state={state} qrDataUrl={qrDataUrl} requestQris={requestQris} simulate={simulate} /> : null}
+            {remainingMethod === "BANK_TRANSFER" ? <TransferBlock state={state} /> : null}
+          </>
+        ) : null}
+      </section>
+    </PageRefreshContext.Provider>
   );
 }

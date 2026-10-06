@@ -190,6 +190,29 @@ test.describe("payments (Phase 5, MockProvider)", () => {
     await expect(customer.getByTestId("tracking-payment-status")).toHaveText("Pembayaran Berhasil");
   });
 
+  test("Transfer: status updates after the proof upload even when a page refresh is slower than the 5 s status polling", async ({ page }) => {
+    test.setTimeout(120_000);
+    const { orderNumber, token } = await createOrderViaUi(page, { customerName: "Pelanggan Refresh Lambat", method: "Transfer Bank", option: "Bayar Penuh" });
+    await openTracking(page, orderNumber, token);
+
+    // Staging measured 7.5–8.1 s per tracking-page refresh (functions far from the database).
+    // Every refresh of this page (not the first load) now takes 8 s, longer than the polling interval.
+    await page.route(/\/lacak\?_rsc=/, async (route) => {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 8_000));
+      await route.fulfill({ response }).catch(() => {}); // the router may abort it; that is what used to loop
+    });
+
+    const panel = page.getByRole("region", { name: "Lakukan Pembayaran" });
+    await panel.getByLabel("Unggah bukti transfer").setInputFiles({ name: "bukti.png", mimeType: "image/png", buffer: PNG });
+    await panel.getByRole("button", { name: "Kirim Bukti Pembayaran" }).click();
+    await expect(page.getByText("Bukti pembayaran terkirim. Admin akan memverifikasi.")).toBeVisible();
+
+    // No manual reload: one slow refresh must be allowed to finish instead of being cancelled every 5 s.
+    await expect(page.getByTestId("tracking-payment-status")).toHaveText("Menunggu Verifikasi", { timeout: 45_000 });
+    await expect(page.getByRole("heading", { name: "Verifikasi Pembayaran" })).toBeVisible();
+  });
+
   test("Cash: admin marks paid at pickup, then the order can be completed", async ({ browser }) => {
     const customer = await (await browser.newContext()).newPage();
     const { orderNumber } = await createOrderViaUi(customer, { customerName: "Pelanggan Cash" });

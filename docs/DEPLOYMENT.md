@@ -181,7 +181,8 @@ Client key tidak dipakai (Core API, QR dirender server). `ALLOW_MOCK_PAYMENTS` d
 6. Bukti lulus: baris baru di `payment_webhook_events` (signature valid, hasil
    `PAID_ORDER_CONFIRMED`), transaksi `PAID`, order `CONFIRMED`. Ulangi untuk gagal/expired
    (biarkan QR habis) dan webhook ganda (kirim ulang notifikasi dari dashboard → `DUPLICATE_EVENT`).
-7. `npm run payments:reconcile` harus melaporkan 0 mismatch.
+7. `npm run payments:reconcile` harus selesai dengan exit code 0: 0 mismatch dan 0 unchecked
+   (UNCHECKED = status provider tidak terbaca, mis. server key/`PAYMENT_ENV` salah).
 
 MockProvider **bukan** pengganti langkah di atas.
 

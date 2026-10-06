@@ -55,3 +55,20 @@ export async function reconcilePayments(db: Database, provider: PaymentProvider,
   }
   return out;
 }
+
+/** Rows whose provider status could not be read are not "ok": the report is incomplete. */
+export const isUnchecked = (row: ReconcileRow) => row.providerStatus === "PROVIDER_UNAVAILABLE" || row.providerStatus === "ERROR";
+
+export interface ReconcileSummary {
+  checked: number;
+  mismatches: number;
+  unchecked: number;
+  /** 0 = every transaction checked and none missed; 1 = a mismatch or an unchecked transaction. */
+  exitCode: 0 | 1;
+}
+
+export function summarizeReconcile(rows: ReconcileRow[]): ReconcileSummary {
+  const mismatches = rows.filter((r) => r.mismatch).length;
+  const unchecked = rows.filter(isUnchecked).length;
+  return { checked: rows.length - unchecked, mismatches, unchecked, exitCode: mismatches || unchecked ? 1 : 0 };
+}

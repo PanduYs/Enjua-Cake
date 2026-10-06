@@ -16,7 +16,7 @@ import type { PaymentProvider } from "@/server/payments/types";
 import { consumeRateLimit } from "@/server/security/rate-limit";
 import type { PrivateBucket } from "@/server/storage/types";
 
-import { expireIfDue, expireRemainingPaymentsIfDue, type Tx } from "./order-lifecycle";
+import { expireIfDue, expireRemainingPaymentsIfDue, hasDueRemainingPayment, type Tx } from "./order-lifecycle";
 import { getSettings, type Settings } from "./settings";
 
 export type { ActiveQris, CustomerPaymentState };
@@ -342,21 +342,24 @@ export async function uploadPaymentProof(
 /** Tracking-page payment panel. Call after lazy expiry (getTrackingView does it). */
 export async function getCustomerPaymentState(db: Database, orderId: string, clock: Clock): Promise<CustomerPaymentState | null> {
   const now = clock.now();
-  await expireRemainingPaymentsIfDue(db, now, orderId);
-  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  // All of the order's transactions (exceptions too) so the remaining-payment expiry check
+  // sees exactly the rows expireRemainingPaymentsIfDue would update.
+  const readTxs = () => db.select().from(paymentTransactions).where(eq(paymentTransactions.orderId, orderId)).orderBy(desc(paymentTransactions.createdAt));
+  const [[order], settings, allTxs, [lastProof]] = await Promise.all([
+    db.select().from(orders).where(eq(orders.id, orderId)).limit(1),
+    getSettings(db),
+    readTxs(),
+    db
+      .select({ status: paymentProofs.verificationStatus })
+      .from(paymentProofs)
+      .where(eq(paymentProofs.orderId, orderId))
+      .orderBy(desc(paymentProofs.uploadedAt))
+      .limit(1),
+  ]);
   if (!order) return null;
-  const settings = await getSettings(db);
-  const txs = await db
-    .select()
-    .from(paymentTransactions)
-    .where(and(eq(paymentTransactions.orderId, orderId), eq(paymentTransactions.isException, false)))
-    .orderBy(desc(paymentTransactions.createdAt));
-  const [lastProof] = await db
-    .select({ status: paymentProofs.verificationStatus })
-    .from(paymentProofs)
-    .where(eq(paymentProofs.orderId, orderId))
-    .orderBy(desc(paymentProofs.uploadedAt))
-    .limit(1);
+  // Remaining-payment expiry (TD-09): write only when one of these rows is actually overdue.
+  const current = hasDueRemainingPayment(allTxs, now) && (await expireRemainingPaymentsIfDue(db, now, orderId)) > 0 ? await readTxs() : allTxs;
+  const txs = current.filter((t) => !t.isException);
 
   const valid = (t: (typeof txs)[number]) => !t.expiresAt || t.expiresAt.getTime() > now.getTime();
   const qris = txs.find((t) => t.method === "QRIS" && t.status === "WAITING_PAYMENT" && t.qrString && valid(t));

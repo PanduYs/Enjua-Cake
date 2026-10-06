@@ -9,6 +9,7 @@ import { admins, auditLogs, categories, orders, paymentExceptions, paymentProofs
 import { parseIsoDate } from "@/server/domain/time/wib";
 import { MockPaymentProvider } from "@/server/payments/mock-provider";
 import { PaymentProviderError, type PaymentProvider } from "@/server/payments/types";
+import { getAdminOrderDetail } from "@/server/services/admin-orders";
 import { countActiveOrders } from "@/server/services/capacity";
 import { expireDueReservations, expireIfDue, transitionOrder } from "@/server/services/order-lifecycle";
 import { approvePaymentProof, completeRefund, getPaymentQueue, markCashPaid, recordRefund, rejectPaymentProof, resolvePaymentException } from "@/server/services/payment-admin";
@@ -17,6 +18,8 @@ import { getCustomerPaymentState, requestQrisPayment, startTransferRemainingPaym
 import { placeOrder, type PlacedOrder } from "@/server/services/place-order";
 import { getTrackingView } from "@/server/services/tracking";
 import { trackingTokenRef } from "@/server/security/tracking-token";
+
+import { isWriteOrTransaction, openProxiedDatabase } from "../support/wire-proxy";
 
 let handle: DatabaseHandle;
 const ids: Record<string, string> = {};
@@ -456,5 +459,62 @@ describe("refund records (FD-61–FD-64)", () => {
     expect((await row(o.orderId)).paymentStatus).toBe("REFUNDED");
     expect(await view()).toMatchObject({ paymentStatus: "REFUNDED", refundedAmount: 125_555 });
     expect((await getPaymentQueue(handle.db)).refundCandidates.map((r) => r.orderId)).not.toContain(o.orderId);
+  });
+});
+
+describe("read paths write only when something is due (lazy expiry TD-07, TD-09)", () => {
+  let proxied: Awaited<ReturnType<typeof openProxiedDatabase>>;
+  beforeAll(async () => {
+    proxied = await openProxiedDatabase(inject("databaseUrl"), 2);
+  });
+  afterAll(async () => {
+    await proxied.handle.close();
+    await proxied.proxy.close();
+  });
+
+  /** Tracking page (view + payment panel) and admin order detail, through the counting proxy. */
+  async function readOrderPages(orderId: string) {
+    const db = proxied.handle.db;
+    const tokenRef = trackingTokenRef((await row(orderId)).trackingTokenHash);
+    proxied.proxy.takeStatements();
+    const view = await getTrackingView(db, { orderId, tokenRef }, clock);
+    const payment = await getCustomerPaymentState(db, orderId, clock);
+    const detail = await getAdminOrderDetail(db, orderId, clock);
+    return { view, payment, detail, statements: proxied.proxy.takeStatements() };
+  }
+
+  it("send no transaction and no write while nothing is due", async () => {
+    const pending = await order(); // reservation runs until +30 min
+    const dpPaid = await order();
+    await pay(await refOf((await qris(dpPaid.orderId)).transactionId));
+    await qris(dpPaid.orderId); // remaining QR valid until +30 min
+    for (const o of [pending, dpPaid]) {
+      const { view, payment, detail, statements } = await readOrderPages(o.orderId);
+      expect(view?.orderNumber).toBe(o.orderNumber);
+      expect(payment).not.toBeNull();
+      expect(detail?.order.id).toBe(o.orderId);
+      expect(statements.filter(isWriteOrTransaction)).toEqual([]);
+    }
+  });
+
+  it("still expire an overdue reservation and an overdue remaining payment when read", async () => {
+    const pending = await order();
+    const dpPaid = await order();
+    await pay(await refOf((await qris(dpPaid.orderId)).transactionId));
+    const remaining = await qris(dpPaid.orderId);
+    clock.set(minutes(31));
+
+    const expired = await readOrderPages(pending.orderId);
+    expect(expired.view).toMatchObject({ orderStatus: "CANCELLED", cancellation: "PAYMENT_EXPIRED" });
+    expect(expired.payment?.stage).toBe("CLOSED");
+    expect(expired.detail?.order).toMatchObject({ orderStatus: "CANCELLED", paymentStatus: "EXPIRED" });
+    expect(expired.detail?.audit.map((a) => a.eventType)).toContain("ORDER_STATUS_CHANGED");
+    expect(expired.statements.filter((s) => /^begin/i.test(s))).toHaveLength(1); // expired once, by the first read
+
+    const overdue = await readOrderPages(dpPaid.orderId);
+    expect(overdue.payment).toMatchObject({ stage: "PAY_REMAINING", activeQris: null });
+    expect(overdue.detail?.transactions.find((t) => t.id === remaining.transactionId)?.status).toBe("EXPIRED");
+    expect(overdue.detail?.order).toMatchObject({ orderStatus: "CONFIRMED", paymentStatus: "PARTIALLY_PAID" }); // DI-01
+    expect((await txsOf(dpPaid.orderId)).find((t) => t.id === remaining.transactionId)?.status).toBe("EXPIRED");
   });
 });

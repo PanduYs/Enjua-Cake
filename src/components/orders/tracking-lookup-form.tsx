@@ -35,9 +35,15 @@ function useTrackingLink(onLink: (values: { orderNumber: string; token: string }
       const fromLink = readFragment();
       if (fromLink) latest.current(fromLink);
     };
-    handle();
+    // After the App Router's own mount effects: run earlier, it writes the original URL (with
+    // the fragment) back into history, and the page reads the same link again after its
+    // refresh — a second verification and a second full render.
+    const initial = window.setTimeout(handle, 0);
     window.addEventListener("hashchange", handle);
-    return () => window.removeEventListener("hashchange", handle);
+    return () => {
+      window.clearTimeout(initial);
+      window.removeEventListener("hashchange", handle);
+    };
   }, []);
 }
 

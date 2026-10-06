@@ -7,7 +7,7 @@ import type { Database } from "@/server/db/client";
 import { admins, auditLogs, orderItems, orderOverrides, orders, paymentTransactions } from "@/server/db/schema";
 import { allowedTransitions, candidateTransitions, type OrderStatus } from "@/server/domain/orders/state-machine";
 
-import { expireDueReservations, expireIfDue, expireRemainingPaymentsIfDue } from "./order-lifecycle";
+import { expireDueReservations, expireIfDueFromRow, expireRemainingPaymentsIfDue, hasDueRemainingPayment } from "./order-lifecycle";
 import { getAdminPaymentDetail } from "./payment-admin";
 
 export const ADMIN_ORDER_STATUSES = ["NEW", "CONFIRMED", "PROCESSING", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"] as const;
@@ -38,14 +38,16 @@ export async function listAdminOrders(db: Database, clock: Clock, filters: { sta
 }
 
 export async function getAdminOrderDetail(db: Database, orderId: string, clock: Clock) {
-  await expireIfDue(db, orderId, clock);
-  await expireRemainingPaymentsIfDue(db, clock.now(), orderId);
-  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  const readOrder = async () => (await db.select().from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  let order = await readOrder();
   if (!order) return null;
+  // Lazy expiry: the locking transaction runs only when this row says the reservation is due.
+  if (await expireIfDueFromRow(db, order, clock)) order = (await readOrder())!;
 
-  const [items, transactions, audit] = await Promise.all([
+  const readTransactions = () => db.select().from(paymentTransactions).where(eq(paymentTransactions.orderId, orderId)).orderBy(asc(paymentTransactions.createdAt));
+  const [items, readTxs, audit, payments, overrides, cancelledByRows] = await Promise.all([
     db.select().from(orderItems).where(eq(orderItems.orderId, orderId)).orderBy(asc(orderItems.productNameSnapshot)),
-    db.select().from(paymentTransactions).where(eq(paymentTransactions.orderId, orderId)).orderBy(asc(paymentTransactions.createdAt)),
+    readTransactions(),
     db
       .select({
         id: auditLogs.id,
@@ -67,17 +69,19 @@ export async function getAdminOrderDetail(db: Database, orderId: string, clock: 
         ),
       )
       .orderBy(asc(auditLogs.id)),
+    getAdminPaymentDetail(db, orderId),
+    db
+      .select({ id: orderOverrides.id, type: orderOverrides.overrideType, before: orderOverrides.valueBefore, after: orderOverrides.valueAfter, reason: orderOverrides.reason, adminName: admins.name, createdAt: orderOverrides.createdAt })
+      .from(orderOverrides)
+      .leftJoin(admins, eq(orderOverrides.adminId, admins.id))
+      .where(eq(orderOverrides.orderId, orderId))
+      .orderBy(asc(orderOverrides.createdAt)),
+    order.cancelledByAdminId ? db.select({ name: admins.name }).from(admins).where(inArray(admins.id, [order.cancelledByAdminId])).limit(1) : Promise.resolve([]),
   ]);
-
-  const cancelledBy = order.cancelledByAdminId
-    ? ((
-        await db
-          .select({ name: admins.name })
-          .from(admins)
-          .where(inArray(admins.id, [order.cancelledByAdminId]))
-          .limit(1)
-      )[0]?.name ?? null)
-    : null;
+  // Remaining-payment expiry (TD-09): write only when one of these rows is actually overdue.
+  const now = clock.now();
+  const transactions = hasDueRemainingPayment(readTxs, now) && (await expireRemainingPaymentsIfDue(db, now, orderId)) > 0 ? await readTransactions() : readTxs;
+  const cancelledBy = cancelledByRows[0]?.name ?? null;
 
   const ctx = {
     paymentMethod: order.paymentMethod,
@@ -87,13 +91,8 @@ export async function getAdminOrderDetail(db: Database, orderId: string, clock: 
     order,
     items,
     transactions,
-    payments: await getAdminPaymentDetail(db, orderId),
-    overrides: await db
-      .select({ id: orderOverrides.id, type: orderOverrides.overrideType, before: orderOverrides.valueBefore, after: orderOverrides.valueAfter, reason: orderOverrides.reason, adminName: admins.name, createdAt: orderOverrides.createdAt })
-      .from(orderOverrides)
-      .leftJoin(admins, eq(orderOverrides.adminId, admins.id))
-      .where(eq(orderOverrides.orderId, orderId))
-      .orderBy(asc(orderOverrides.createdAt)),
+    payments,
+    overrides,
     audit,
     cancelledBy,
     /** Targets the admin may choose now (FD-116); shown in the UI. */

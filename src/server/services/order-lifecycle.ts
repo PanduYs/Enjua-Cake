@@ -86,6 +86,21 @@ export async function expireLockedOrderIfDue(tx: Tx, orderId: string, now: Date)
   return true;
 }
 
+/**
+ * Read-path lazy expiry (TD-07) for an order row the caller has just read: opens the locking
+ * transaction only when that row is due, so ordinary views write nothing. The transaction
+ * re-checks the same rule under the row lock. Returns true when it expired the order.
+ */
+export async function expireIfDueFromRow(db: Database, order: Parameters<typeof isExpirable>[0] & { id: string }, clock: Clock): Promise<boolean> {
+  if (!isExpirable(order, clock.now())) return false;
+  return expireIfDue(db, order.id, clock);
+}
+
+/** Same rule as expireRemainingPaymentsIfDue, for transaction rows already read. */
+export function hasDueRemainingPayment(txs: ReadonlyArray<{ purpose: string; status: string; expiresAt: Date | null }>, now: Date): boolean {
+  return txs.some((t) => t.purpose === "REMAINING" && t.status === "WAITING_PAYMENT" && t.expiresAt !== null && t.expiresAt.getTime() <= now.getTime());
+}
+
 /** Idempotent; safe to call from any read path (TD-07). Returns true when it expired the order. */
 export async function expireIfDue(db: Database, orderId: string, clock: Clock): Promise<boolean> {
   const now = clock.now();

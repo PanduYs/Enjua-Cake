@@ -11,7 +11,7 @@ import { normalizeOrderNumber, ORDER_NUMBER_PATTERN } from "@/server/domain/orde
 import { consumeRateLimit } from "@/server/security/rate-limit";
 import { hashTrackingToken, normalizeTrackingToken, trackingTokenMatches, trackingTokenRef } from "@/server/security/tracking-token";
 
-import { expireIfDue } from "./order-lifecycle";
+import { expireIfDueFromRow } from "./order-lifecycle";
 
 export type { TrackingView };
 
@@ -60,26 +60,30 @@ export async function verifyTrackingAccess(deps: { db: Database; clock: Clock },
  * Returns null if the session's access code is no longer current (regenerated).
  */
 export async function getTrackingView(db: Database, session: { orderId: string; tokenRef: string }, clock: Clock): Promise<TrackingView | null> {
-  await expireIfDue(db, session.orderId, clock);
-  const [o] = await db.select().from(orders).where(eq(orders.id, session.orderId)).limit(1);
+  const readOrder = async () => (await db.select().from(orders).where(eq(orders.id, session.orderId)).limit(1))[0];
+  let o = await readOrder();
+  // Lazy expiry: the locking transaction runs only when this row says the reservation is due.
+  if (o && (await expireIfDueFromRow(db, o, clock))) o = await readOrder();
   if (!o || trackingTokenRef(o.trackingTokenHash) !== session.tokenRef) return null;
-  const items = await db
-    .select({
-      name: orderItems.productNameSnapshot,
-      quantity: orderItems.quantity,
-      unitPrice: orderItems.unitPriceSnapshot,
-      effectiveUnitPrice: orderItems.effectiveUnitPrice,
-      lineSubtotal: orderItems.lineSubtotal,
-    })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, o.id))
-    .orderBy(asc(orderItems.productNameSnapshot));
-  // Same rule as syncOrderPayment: completed refunds of counted payments, not of exceptions.
-  const refundRows = await db
-    .select({ amount: refunds.amount, isException: paymentTransactions.isException })
-    .from(refunds)
-    .leftJoin(paymentTransactions, eq(refunds.paymentTransactionId, paymentTransactions.id))
-    .where(and(eq(refunds.orderId, o.id), eq(refunds.status, "COMPLETED")));
+  const [items, refundRows] = await Promise.all([
+    db
+      .select({
+        name: orderItems.productNameSnapshot,
+        quantity: orderItems.quantity,
+        unitPrice: orderItems.unitPriceSnapshot,
+        effectiveUnitPrice: orderItems.effectiveUnitPrice,
+        lineSubtotal: orderItems.lineSubtotal,
+      })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, o.id))
+      .orderBy(asc(orderItems.productNameSnapshot)),
+    // Same rule as syncOrderPayment: completed refunds of counted payments, not of exceptions.
+    db
+      .select({ amount: refunds.amount, isException: paymentTransactions.isException })
+      .from(refunds)
+      .leftJoin(paymentTransactions, eq(refunds.paymentTransactionId, paymentTransactions.id))
+      .where(and(eq(refunds.orderId, o.id), eq(refunds.status, "COMPLETED"))),
+  ]);
   const refundedAmount = refundRows.filter((r) => r.isException !== true).reduce((sum, r) => sum + r.amount, 0);
   return {
     orderNumber: o.orderNumber,

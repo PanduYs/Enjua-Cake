@@ -65,6 +65,25 @@ test.describe("orders (Phase 4)", () => {
     await expect(page.getByLabel("Nomor Pesanan")).toBeVisible();
   });
 
+  test("a tracking link opened in a new tab verifies the code once (one request, one page refresh)", async ({ page, browser }) => {
+    const { orderNumber, token } = await createCashOrder(page, "Pelanggan Link Baru");
+
+    // A shared link (e.g. from WhatsApp) is a fresh page load with the code in the fragment.
+    const fresh = await (await browser.newContext()).newPage();
+    const verifications: string[] = [];
+    fresh.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/api/tracking" && r.method() === "POST") verifications.push(r.url());
+    });
+    await fresh.goto(`/lacak#o=${orderNumber}&t=${token}`);
+    await expect(fresh.getByTestId("tracking-order-number")).toHaveText(orderNumber);
+    // The App Router used to write the fragment back after mount, so the page verified it again
+    // after its refresh (second request + second full render).
+    await fresh.waitForTimeout(1_500);
+    expect(verifications).toHaveLength(1);
+    expect(new URL(fresh.url()).hash).toBe("");
+    await fresh.context().close();
+  });
+
   test("lookup with a wrong code or an unknown number gives the same generic message (EC-11)", async ({ page }) => {
     await page.goto("/lacak");
     await page.getByLabel("Nomor Pesanan").fill("ENC-20261002-ZZZZ");

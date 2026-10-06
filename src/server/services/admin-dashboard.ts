@@ -20,12 +20,12 @@ const UPCOMING_DAYS = 7;
  * Not a BI module (FD-89).
  */
 export async function getDashboard(db: Database, clock: Clock) {
-  await expireDueReservations(db, clock);
+  // Settings do not depend on the sweep; the counts below must follow it.
+  const [, settings] = await Promise.all([expireDueReservations(db, clock), getSettings(db)]);
   const now = clock.now();
   const today = toWibDate(now);
   const monthStart = wibDateTimeToInstant(parseIsoDate(`${today.slice(0, 8)}01`));
   const dates = Array.from({ length: UPCOMING_DAYS }, (_, i) => addCalendarDays(today, i));
-  const settings = await getSettings(db);
 
   const [statusRows, proofs, exceptions, facts, upcomingRows, todayOrders, received, receivedMonth, refunded, outstanding, cashUnconfirmed, readyUnpaid, refundCandidates] = await Promise.all([
     db.select({ status: orders.orderStatus, n: count() }).from(orders).groupBy(orders.orderStatus),

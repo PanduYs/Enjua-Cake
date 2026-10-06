@@ -3,6 +3,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import { systemClock, type Clock } from "@/server/clock";
 import { getDb, type Database } from "@/server/db/client";
@@ -43,20 +44,29 @@ export async function resolveAdminSession(
   return { sessionId: session.id, adminId: user.id, name: user.name, email: user.email };
 }
 
+/**
+ * One session lookup per request and cookie value: the protected layout and the page (and a
+ * server action plus the page it renders) all call requireAdmin(). Keyed by the cookie
+ * string, so a session rotated or cleared earlier in the same request is looked up afresh.
+ */
+const resolveAdminSessionForCookies = cache(async (cookieHeader: string): Promise<AdminSession | null> => {
+  const requestHeaders = new Headers(await headers());
+  requestHeaders.set("cookie", cookieHeader);
+  return resolveAdminSession(getAuth(), getDb(), requestHeaders);
+});
+
 export async function getAdminSession(): Promise<AdminSession | null> {
   // Read the request first: this marks the route dynamic before any env/DB access.
-  const requestHeaders = new Headers(await headers());
+  await headers();
   // `cookies()` reflects cookies set earlier in the same server action (e.g. the
   // rotated session after a password change); the raw Cookie header does not.
   const cookieStore = await cookies();
-  requestHeaders.set(
-    "cookie",
+  return resolveAdminSessionForCookies(
     cookieStore
       .getAll()
       .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
       .join("; "),
   );
-  return resolveAdminSession(getAuth(), getDb(), requestHeaders);
 }
 
 /**

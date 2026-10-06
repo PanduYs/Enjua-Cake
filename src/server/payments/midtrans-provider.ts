@@ -167,7 +167,12 @@ export class MidtransPaymentProvider implements PaymentProvider {
     const raw = await this.call(`/v2/${encodeURIComponent(providerReference)}/status`, { method: "GET" });
     const parsed = statusSchema.safeParse(raw);
     if (!parsed.success) throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Malformed Midtrans status");
-    if (parsed.data.status_code === "404" || !parsed.data.transaction_status || !parsed.data.gross_amount) return null;
+    if (parsed.data.status_code === "404") return null;
+    // Any other reply without a transaction status (401 key/environment mismatch, 429, …) is
+    // retryable: the webhook answers 503 instead of recording the event as an unknown reference.
+    if (!parsed.data.transaction_status || !parsed.data.gross_amount) {
+      throw new PaymentProviderError("PROVIDER_UNAVAILABLE", `Midtrans status ${parsed.data.status_code}`);
+    }
     const amount = parseMidtransAmount(parsed.data.gross_amount);
     if (amount === null) throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Non-integer Midtrans amount");
     const status = mapMidtransStatus(parsed.data.transaction_status, parsed.data.fraud_status);

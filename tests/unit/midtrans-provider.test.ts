@@ -72,6 +72,21 @@ describe("Midtrans adapter (TD-08)", () => {
     expect(await provider.getTransactionStatus("nope")).toBeNull();
   });
 
+  it("only 404 means unknown: other replies without a transaction status are retryable provider errors", async () => {
+    // A webhook records its event once it has a status answer, so treating 401 (key or
+    // environment mismatch) or 429 as "unknown" would answer 200 and drop a real payment.
+    const { provider } = setup([
+      { status: 401, body: { status_code: "401", status_message: "Access denied, please check client or server key" } },
+      { status: 429, body: { status_code: "429", status_message: "Too many requests" } },
+      { status: 404, body: { status_code: "404", status_message: "Transaction doesn't exist." } },
+      { body: { status_code: "407", order_id: "tx-2", gross_amount: "1000.00", transaction_status: "expire" } },
+    ]);
+    await expect(provider.getTransactionStatus("tx-1")).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
+    await expect(provider.getTransactionStatus("tx-1")).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
+    expect(await provider.getTransactionStatus("nope")).toBeNull();
+    expect(await provider.getTransactionStatus("tx-2")).toEqual({ providerReference: "tx-2", status: "EXPIRED", amount: 1_000, paidAt: null });
+  });
+
   it("verifies notification signatures (SHA-512) and rejects tampering", async () => {
     const { provider } = setup([]);
     const ok = await provider.parseAndVerifyWebhook(post(notification()));

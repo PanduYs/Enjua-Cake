@@ -160,15 +160,28 @@ pakai penjadwal eksternal yang memanggil endpoint tiap 5 menit dengan `CRON_SECR
   bypass, atau uji di domain staging tanpa proteksi. Tanpa itu QRIS sandbox tidak pernah
   terkonfirmasi di Preview.
 
-### Validasi sandbox (PRD §60) — **BLOCKED: menunggu server key sandbox**
+### Validasi sandbox (PRD §60) — **belum dijalankan**
 
-1. Masukkan key sandbox (SB-…) ke secret staging, `PAYMENT_PROVIDER=midtrans`, `PAYMENT_ENV=sandbox`.
-2. `npm run midtrans:smoke` dari mesin yang memegang key (charge QRIS kecil, cek status,
-   cek signature, cancel). Tidak pernah dijalankan di CI.
-3. Di staging publik: buat pesanan QRIS → bayar via simulator sandbox Midtrans →
-   pastikan webhook masuk dan pesanan Dikonfirmasi; ulangi untuk gagal, expired, dan
-   webhook ganda (kirim ulang notifikasi dari dashboard).
-4. `npm run payments:reconcile` harus melaporkan 0 mismatch.
+Env Preview (scope *Preview*, sumber: `src/server/env.ts`, `src/server/payments/index.ts`):
+`PAYMENT_PROVIDER=midtrans`, `PAYMENT_ENV=sandbox`, `MIDTRANS_SERVER_KEY=<server key sandbox, SB-…>`.
+Client key tidak dipakai (Core API, QR dirender server). `ALLOW_MOCK_PAYMENTS` dan
+`MOCK_PAYMENT_WEBHOOK_SECRET` tidak diperlukan lagi setelah pindah ke Midtrans.
+
+1. Isi env di atas, lalu redeploy Preview (env baru hanya berlaku untuk deployment baru).
+2. Vercel → Settings → Deployment Protection → *Protection Bypass for Automation* → buat secret.
+3. Dashboard Midtrans **Sandbox** → Settings → Payment → Notification URL:
+   `https://<host APP_URL Preview>/api/webhooks/payments/midtrans?x-vercel-protection-bypass=<secret>`
+   (host stabil milik branch, bukan URL per-deployment). Log aplikasi tidak mencatat query string.
+4. (Opsional) `npm run midtrans:smoke` dari mesin yang memegang key: charge QRIS kecil, cek
+   status, cek signature, cancel. Tidak pernah dijalankan di CI.
+5. Di Preview: buat pesanan QRIS → "Tampilkan QRIS". Bayar lewat simulator
+   `https://simulator.sandbox.midtrans.com/openapi/qris/index` dengan URL gambar
+   `https://api.sandbox.midtrans.com/v2/qris/<transaction_id Midtrans>/qr-code`
+   (`transaction_id` dari dashboard Sandbox → Transactions; Order ID = `payment_transactions.id`).
+6. Bukti lulus: baris baru di `payment_webhook_events` (signature valid, hasil
+   `PAID_ORDER_CONFIRMED`), transaksi `PAID`, order `CONFIRMED`. Ulangi untuk gagal/expired
+   (biarkan QR habis) dan webhook ganda (kirim ulang notifikasi dari dashboard → `DUPLICATE_EVENT`).
+7. `npm run payments:reconcile` harus melaporkan 0 mismatch.
 
 MockProvider **bukan** pengganti langkah di atas.
 
